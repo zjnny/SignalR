@@ -3,9 +3,9 @@
 
 using System;
 using System.IO;
+using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Threading.Channels;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Sockets.Internal.Formatters;
@@ -15,11 +15,11 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
 {
     public class ServerSentEventsTransport : IHttpTransport
     {
-        private readonly ChannelReader<byte[]> _application;
+        private readonly IPipeReader _application;
         private readonly string _connectionId;
         private readonly ILogger _logger;
 
-        public ServerSentEventsTransport(ChannelReader<byte[]> application, string connectionId, ILoggerFactory loggerFactory)
+        public ServerSentEventsTransport(IPipeReader application, string connectionId, ILoggerFactory loggerFactory)
         {
             _application = application;
             _connectionId = connectionId;
@@ -28,42 +28,56 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
 
         public async Task ProcessRequestAsync(HttpContext context, CancellationToken token)
         {
-            context.Response.ContentType = "text/event-stream";
-            context.Response.Headers["Cache-Control"] = "no-cache";
-
-            // Make sure we disable all response buffering for SSE
-            var bufferingFeature = context.Features.Get<IHttpBufferingFeature>();
-            bufferingFeature?.DisableResponseBuffering();
-
-            context.Response.Headers["Content-Encoding"] = "identity";
-
-            // Workaround for a Firefox bug where EventSource won't fire the open event
-            // until it receives some data
-            await context.Response.WriteAsync(":\r\n");
-            await context.Response.Body.FlushAsync();
-
             try
             {
-                while (await _application.WaitToReadAsync(token))
-                {
-                    var ms = new MemoryStream();
-                    while (_application.TryRead(out var buffer))
-                    {
-                        _logger.SSEWritingMessage(buffer.Length);
+                context.Response.ContentType = "text/event-stream";
+                context.Response.Headers["Cache-Control"] = "no-cache";
 
-                        ServerSentEventsMessageFormatter.WriteMessage(buffer, ms);
+                // Make sure we disable all response buffering for SSE
+                var bufferingFeature = context.Features.Get<IHttpBufferingFeature>();
+                bufferingFeature?.DisableResponseBuffering();
+
+                context.Response.Headers["Content-Encoding"] = "identity";
+
+                // Workaround for a Firefox bug where EventSource won't fire the open event
+                // until it receives some data
+                await context.Response.WriteAsync(":\r\n");
+                await context.Response.Body.FlushAsync();
+
+                while (true)
+                {
+                    var result = await _application.ReadAsync();
+                    if (result.IsCancelled || result.IsCompleted)
+                    {
+                        Log.ConnectionClosed(_logger, null);
+                        break;
                     }
 
-                    ms.Seek(0, SeekOrigin.Begin);
-                    await ms.CopyToAsync(context.Response.Body);
+                    // Write each of the segments in the buffer
+                    foreach (var segment in result.Buffer)
+                    {
+                        Log.WritingMessage(_logger, segment.Length, null);
+                        ServerSentEventsMessageFormatter.WriteMessage(segment.Span, context.Response.Body);
+                    }
                 }
-
-                await _application.Completion;
             }
-            catch (OperationCanceledException)
+            catch (Exception ex)
             {
-                // Closed connection
+                Log.Terminated(_logger, ex);
+                throw;
             }
+        }
+
+        private static class Log
+        {
+            public static readonly Action<ILogger, Exception> ConnectionClosed =
+                LoggerMessage.Define(LogLevel.Trace, new EventId(1, "ConnectionClosed"), "The connection has been closed.");
+
+            public static readonly Action<ILogger, int, Exception> WritingMessage =
+                LoggerMessage.Define<int>(LogLevel.Debug, new EventId(2, "WritingMessage"), "Writing a {count} byte message.");
+
+            public static readonly Action<ILogger, Exception> Terminated =
+                LoggerMessage.Define(LogLevel.Error, new EventId(3, "Terminated"), "Server-sent events transport was terminated due to an error.");
         }
     }
 }

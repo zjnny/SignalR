@@ -2,13 +2,15 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO.Pipelines;
 using System.Net.WebSockets;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Sockets.Http.Internal;
 using Microsoft.Extensions.Logging;
 
 namespace Microsoft.AspNetCore.Sockets.Internal.Transports
@@ -17,10 +19,10 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
     {
         private readonly WebSocketOptions _options;
         private readonly ILogger _logger;
-        private readonly Channel<byte[]> _application;
+        private readonly IPipeReader _application;
         private readonly DefaultConnectionContext _connection;
 
-        public WebSocketsTransport(WebSocketOptions options, Channel<byte[]> application, DefaultConnectionContext connection, ILoggerFactory loggerFactory)
+        public WebSocketsTransport(WebSocketOptions options, IPipeReader application, DefaultConnectionContext connection, ILoggerFactory loggerFactory)
         {
             if (options == null)
             {
@@ -49,7 +51,7 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
 
             using (var ws = await context.WebSockets.AcceptWebSocketAsync(_options.SubProtocol))
             {
-                _logger.SocketOpened();
+                Log.SocketOpened(_logger, null);
 
                 try
                 {
@@ -57,7 +59,7 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
                 }
                 finally
                 {
-                    _logger.SocketClosed();
+                    Log.SocketClosed(_logger, null);
                 }
             }
         }
@@ -78,12 +80,12 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
             if (trigger == receiving)
             {
                 task = sending;
-                _logger.WaitingForSend();
+                Log.WaitingForSend(_logger, null);
             }
             else
             {
                 task = receiving;
-                _logger.WaitingForClose();
+                Log.WaitingForClose(_logger, null);
             }
 
             // We're done writing
@@ -95,7 +97,7 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
 
             if (resultTask != task)
             {
-                _logger.CloseTimedOut();
+                Log.CloseTimedOut(_logger, null);
                 socket.Abort();
             }
             else
@@ -108,7 +110,7 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
             trigger.GetAwaiter().GetResult();
         }
 
-        private async Task<WebSocketReceiveResult> StartReceiving(WebSocket socket)
+        private async Task<WebSocketReceiveResult> StartReceiving(WebSocket socket, CancellationToken cancellationToken)
         {
             // REVIEW: This code was copied from the client, it's highly unoptimized at the moment (especially
             // for server logic)
@@ -116,25 +118,29 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
             while (true)
             {
                 const int bufferSize = 4096;
-                var totalBytes = 0;
-                WebSocketReceiveResult receiveResult;
-                do
+
+                // REVIEW: Should we use a buffer size at all?
+                // REVIEW: This will disregard EndOfMessage.
+                var buffer = _connection.Application.Writer.Alloc(bufferSize);
+
+                // Exceptions are handled above where the send and receive tasks are being run.
+                var receiveResult = await socket.ReceiveMemoryAsync(buffer.Buffer, cancellationToken);
+
+                // If the message was a close frame, terminate (close frame payload isn't written through)
+                if (receiveResult.MessageType == WebSocketMessageType.Close)
                 {
-                    var buffer = new ArraySegment<byte>(new byte[bufferSize]);
+                    return receiveResult;
+                }
 
-                    // Exceptions are handled above where the send and receive tasks are being run.
-                    receiveResult = await socket.ReceiveAsync(buffer, CancellationToken.None);
-                    if (receiveResult.MessageType == WebSocketMessageType.Close)
-                    {
-                        return receiveResult;
-                    }
+                Log.MessageReceived(_logger, receiveResult.MessageType, receiveResult.Count, receiveResult.EndOfMessage, null);
 
-                    _logger.MessageReceived(receiveResult.MessageType, receiveResult.Count, receiveResult.EndOfMessage);
+                // Commit and flush the write
+                buffer.Commit();
+                await buffer.FlushAsync();
 
-                    var truncBuffer = new ArraySegment<byte>(buffer.Array, 0, receiveResult.Count);
-                    incomingMessage.Add(truncBuffer);
-                    totalBytes += receiveResult.Count;
-                } while (!receiveResult.EndOfMessage);
+                var truncBuffer = new ArraySegment<byte>(buffer.Array, 0, receiveResult.Count);
+                incomingMessage.Add(truncBuffer);
+                totalBytes += receiveResult.Count;
 
                 // Making sure the message type is either text or binary
                 Debug.Assert((receiveResult.MessageType == WebSocketMessageType.Binary || receiveResult.MessageType == WebSocketMessageType.Text), "Unexpected message type");
@@ -159,7 +165,7 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
                     Buffer.BlockCopy(incomingMessage[0].Array, incomingMessage[0].Offset, messageBuffer, 0, incomingMessage[0].Count);
                 }
 
-                _logger.MessageToApplication(messageBuffer.Length);
+                Log.MessageToApplication(_logger, messageBuffer.Length, null);
                 while (await _application.Writer.WaitToWriteAsync())
                 {
                     if (_application.Writer.TryWrite(messageBuffer))
@@ -182,7 +188,7 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
                     {
                         try
                         {
-                            _logger.SendPayload(buffer.Length);
+                            Log.SendPayload(_logger, buffer.Length);
 
                             var webSocketMessageType = (_connection.TransferMode == TransferMode.Binary
                                 ? WebSocketMessageType.Binary
@@ -196,12 +202,12 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
                         catch (WebSocketException socketException) when (!WebSocketCanSend(ws))
                         {
                             // this can happen when we send the CloseFrame to the client and try to write afterwards
-                            _logger.SendFailed(socketException);
+                            Log.SendFailed(_logger, socketException);
                             break;
                         }
                         catch (Exception ex)
                         {
-                            _logger.ErrorWritingFrame(ex);
+                            Log.ErrorWritingFrame(_logger, ex);
                             break;
                         }
                     }
@@ -214,6 +220,48 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
             return !(ws.State == WebSocketState.Aborted ||
                    ws.State == WebSocketState.Closed ||
                    ws.State == WebSocketState.CloseSent);
+        }
+
+        private static class Log
+        {
+            public static readonly Action<ILogger, Exception> SocketOpened =
+                LoggerMessage.Define(LogLevel.Information, new EventId(1, "SocketOpened"), "Socket opened.");
+
+            public static readonly Action<ILogger, Exception> SocketClosed =
+                LoggerMessage.Define(LogLevel.Information, new EventId(2, "SocketClosed"), "Socket closed.");
+
+            public static readonly Action<ILogger, WebSocketCloseStatus?, string, Exception> ClientClosed =
+                LoggerMessage.Define<WebSocketCloseStatus?, string>(LogLevel.Debug, new EventId(3, "ClientClosed"), "Client closed connection with status code '{status}' ({description}). Signaling end-of-input to application.");
+
+            public static readonly Action<ILogger, Exception> WaitingForSend =
+                LoggerMessage.Define(LogLevel.Debug, new EventId(4, "WaitingForSend"), "Waiting for the application to finish sending data.");
+
+            public static readonly Action<ILogger, Exception> FailedSending =
+                LoggerMessage.Define(LogLevel.Debug, new EventId(5, "FailedSending"), "Application failed during sending. Sending InternalServerError close frame.");
+
+            public static readonly Action<ILogger, Exception> FinishedSending =
+                LoggerMessage.Define(LogLevel.Debug, new EventId(6, "FinishedSending"), "Application finished sending. Sending close frame.");
+
+            public static readonly Action<ILogger, Exception> WaitingForClose =
+                LoggerMessage.Define(LogLevel.Debug, new EventId(7, "WaitingForClose"), "Waiting for the client to close the socket.");
+
+            public static readonly Action<ILogger, Exception> CloseTimedOut =
+                LoggerMessage.Define(LogLevel.Debug, new EventId(8, "CloseTimedOut"), "Timed out waiting for client to send the close frame, aborting the connection.");
+
+            public static readonly Action<ILogger, WebSocketMessageType, int, bool, Exception> MessageReceived =
+                LoggerMessage.Define<WebSocketMessageType, int, bool>(LogLevel.Debug, new EventId(9, "MessageReceived"), "Message received. Type: {messageType}, size: {size}, EndOfMessage: {endOfMessage}.");
+
+            public static readonly Action<ILogger, int, Exception> MessageToApplication =
+                LoggerMessage.Define<int>(LogLevel.Debug, new EventId(10, "MessageToApplication"), "Passing message to application. Payload size: {size}.");
+
+            public static readonly Action<ILogger, int, Exception> SendPayload =
+                LoggerMessage.Define<int>(LogLevel.Debug, new EventId(11, "SendPayload"), "Sending payload: {size} bytes.");
+
+            public static readonly Action<ILogger, Exception> ErrorWritingFrame =
+                LoggerMessage.Define(LogLevel.Error, new EventId(12, "ErrorWritingFrame"), "Error writing frame.");
+
+            public static readonly Action<ILogger, Exception> SendFailed =
+                LoggerMessage.Define(LogLevel.Trace, new EventId(13, "SendFailed"), "Socket failed to send.");
         }
     }
 }

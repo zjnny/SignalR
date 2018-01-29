@@ -3,23 +3,26 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Pipelines;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Sockets.Features;
+using Microsoft.AspNetCore.Sockets.Http.Internal;
 using Microsoft.Extensions.Logging;
 
 namespace Microsoft.AspNetCore.Sockets.Internal.Transports
 {
     public class LongPollingTransport : IHttpTransport
     {
-        private readonly ChannelReader<byte[]> _application;
+        private readonly IPipeReader _application;
         private readonly ILogger _logger;
         private readonly CancellationToken _timeoutToken;
         private readonly string _connectionId;
 
-        public LongPollingTransport(CancellationToken timeoutToken, ChannelReader<byte[]> application, string connectionId, ILoggerFactory loggerFactory)
+        public LongPollingTransport(CancellationToken timeoutToken, IPipeReader application, string connectionId, ILoggerFactory loggerFactory)
         {
             _timeoutToken = timeoutToken;
             _application = application;
@@ -31,71 +34,67 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Transports
         {
             try
             {
-                if (!await _application.WaitToReadAsync(token))
+                var result = await _application.ReadAsync(_timeoutToken);
+                if (result.IsCancelled || result.IsCompleted)
                 {
-                    await _application.Completion;
-                    _logger.LongPolling204();
-                    context.Response.ContentType = "text/plain";
-                    context.Response.StatusCode = StatusCodes.Status204NoContent;
-                    return;
+                    if (result.IsCancelled && _timeoutToken.IsCancellationRequested)
+                    {
+                        // Timeout elapsed while waiting for a message. Just return 200 OK with no content.
+                        Log.TimedOut(_logger, null);
+
+                        context.Response.ContentLength = 0;
+                        context.Response.ContentType = "text/plain";
+                        context.Response.StatusCode = StatusCodes.Status200OK;
+                    }
+                    else if (result.IsCancelled && context.RequestAborted.IsCancellationRequested)
+                    {
+                        // Don't count this as cancellation, this is normal as the poll can end due to the browser closing.
+                        // The background thread will eventually dispose this connection if it's inactive
+                        Log.Disconnected(_logger, null);
+                    }
+                    else
+                    {
+                        // Either a completion or an unexpected cancellation occurred
+                        Log.Completed(_logger, null);
+                        context.Response.ContentType = "text/plain";
+                        context.Response.StatusCode = StatusCodes.Status204NoContent;
+                        return;
+                    }
                 }
 
-                var contentLength = 0;
-                var buffers = new List<byte[]>();
-                // We're intentionally not checking cancellation here because we need to drain messages we've got so far,
-                // but it's too late to emit the 204 required by being cancelled.
-                while (_application.TryRead(out var buffer))
-                {
-                    contentLength += buffer.Length;
-                    buffers.Add(buffer);
-
-                    _logger.LongPollingWritingMessage(buffer.Length);
-                }
-
-                context.Response.ContentLength = contentLength;
+                context.Response.ContentLength = result.Buffer.Length;
                 context.Response.ContentType = "application/octet-stream";
+                Log.WritingMessage(_logger, result.Buffer.Length, null);
 
-                foreach (var buffer in buffers)
+                // Intentionally not using cancellation because we need to flush the messages out and can't send a 204 anymore (headers may have been sent)
+                foreach (var buffer in result.Buffer)
                 {
-                    await context.Response.Body.WriteAsync(buffer, 0, buffer.Length);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // 3 cases:
-                // 1 - Request aborted, the client disconnected (no response)
-                // 2 - The poll timeout is hit (204)
-                // 3 - A new request comes in and cancels this request (204)
-
-                // Case 1
-                if (context.RequestAborted.IsCancellationRequested)
-                {
-                    // Don't count this as cancellation, this is normal as the poll can end due to the browser closing.
-                    // The background thread will eventually dispose this connection if it's inactive
-                    _logger.LongPollingDisconnected();
-                }
-                // Case 2
-                else if (_timeoutToken.IsCancellationRequested)
-                {
-                    _logger.PollTimedOut();
-
-                    context.Response.ContentLength = 0;
-                    context.Response.ContentType = "text/plain";
-                    context.Response.StatusCode = StatusCodes.Status200OK;
-                }
-                else
-                {
-                    // Case 3
-                    _logger.LongPolling204();
-                    context.Response.ContentType = "text/plain";
-                    context.Response.StatusCode = StatusCodes.Status204NoContent;
+                    await context.Response.Body.WriteMemoryAsync(buffer);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LongPollingTerminated(ex);
+                Log.Terminated(_logger, ex);
                 throw;
             }
+        }
+
+        private static class Log
+        {
+            public static readonly Action<ILogger, Exception> Completed =
+                LoggerMessage.Define(LogLevel.Information, new EventId(1, "Completed"), "Terminating Long Polling connection by sending 204 response.");
+
+            public static readonly Action<ILogger, Exception> TimedOut =
+                LoggerMessage.Define(LogLevel.Information, new EventId(2, "TimedOut"), "Poll request timed out. Sending 200 response to connection.");
+
+            public static readonly Action<ILogger, long, Exception> WritingMessage =
+                LoggerMessage.Define<long>(LogLevel.Debug, new EventId(3, "WritingMessage"), "Writing a {count} byte message to connection.");
+
+            public static readonly Action<ILogger, Exception> Disconnected =
+                LoggerMessage.Define(LogLevel.Debug, new EventId(4, "Disconnected"), "Client disconnected from Long Polling endpoint for connection.");
+
+            public static readonly Action<ILogger, Exception> Terminated =
+                LoggerMessage.Define(LogLevel.Error, new EventId(5, "Terminated"), "Long Polling transport was terminated due to an error.");
         }
     }
 }

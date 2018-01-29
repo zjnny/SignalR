@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Channels;
@@ -28,7 +29,7 @@ namespace Microsoft.AspNetCore.Sockets
         private TaskCompletionSource<object> _disposeTcs = new TaskCompletionSource<object>();
         internal ValueStopwatch ConnectionTimer { get; set; }
 
-        public DefaultConnectionContext(string id, Channel<byte[]> transport, Channel<byte[]> application)
+        public DefaultConnectionContext(string id, IPipe transport, IPipe application)
         {
             Transport = transport;
             Application = application;
@@ -65,9 +66,9 @@ namespace Microsoft.AspNetCore.Sockets
 
         public override IDictionary<object, object> Metadata { get; set; } = new ConnectionMetadata();
 
-        public Channel<byte[]> Application { get; }
+        public IPipe Application { get; }
 
-        public override Channel<byte[]> Transport { get; set; }
+        public override IPipe Transport { get; set; }
 
         public TransferMode TransportCapabilities { get; set; }
 
@@ -111,21 +112,21 @@ namespace Microsoft.AspNetCore.Sockets
                     // If the application task is faulted, propagate the error to the transport
                     if (ApplicationTask?.IsFaulted == true)
                     {
-                        Transport.Writer.TryComplete(ApplicationTask.Exception.InnerException);
+                        Transport.Writer.Complete(ApplicationTask.Exception.InnerException);
                     }
                     else
                     {
-                        Transport.Writer.TryComplete();
+                        Transport.Writer.Complete();
                     }
 
                     // If the transport task is faulted, propagate the error to the application
                     if (TransportTask?.IsFaulted == true)
                     {
-                        Application.Writer.TryComplete(TransportTask.Exception.InnerException);
+                        Application.Writer.Complete(TransportTask.Exception.InnerException);
                     }
                     else
                     {
-                        Application.Writer.TryComplete();
+                        Application.Writer.Complete();
                     }
 
                     var applicationTask = ApplicationTask ?? Task.CompletedTask;

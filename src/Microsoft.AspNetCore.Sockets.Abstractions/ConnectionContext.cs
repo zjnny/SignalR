@@ -1,8 +1,8 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System.Collections.Generic;
-using System.Threading.Channels;
+using System.IO.Pipelines;
 using Microsoft.AspNetCore.Http.Features;
 
 namespace Microsoft.AspNetCore.Sockets
@@ -15,6 +15,6 @@ namespace Microsoft.AspNetCore.Sockets
 
         public abstract IDictionary<object, object> Metadata { get; set; }
 
-        public abstract Channel<byte[]> Transport { get; set; }
+        public abstract IPipe Transport { get; set; }
     }
 }

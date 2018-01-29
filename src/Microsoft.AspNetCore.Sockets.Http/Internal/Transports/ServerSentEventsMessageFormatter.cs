@@ -14,7 +14,7 @@ namespace Microsoft.AspNetCore.Sockets.Internal.Formatters
 
         private const byte LineFeed = (byte)'\n';
 
-        public static void WriteMessage(ReadOnlySpan<byte> payload, MemoryStream output)
+        public static void WriteMessage(ReadOnlySpan<byte> payload, Stream output)
         {
             // Write the payload
             WritePayload(payload, output);
