@@ -361,29 +361,29 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
         }
 
-        [Fact]
-        public async Task WebSocketTransportTimesOutWhenCloseFrameNotReceived()
-        {
-            var manager = CreateConnectionManager();
-            var connection = manager.CreateConnection();
+        //[Fact]
+        //public async Task WebSocketTransportTimesOutWhenCloseFrameNotReceived()
+        //{
+        //    var manager = CreateConnectionManager();
+        //    var connection = manager.CreateConnection();
 
-            var dispatcher = new HttpConnectionDispatcher(manager, new LoggerFactory());
+        //    var dispatcher = new HttpConnectionDispatcher(manager, new LoggerFactory());
 
-            var context = MakeRequest("/foo", connection);
-            SetTransport(context, TransportType.WebSockets);
+        //    var context = MakeRequest("/foo", connection);
+        //    SetTransport(context, TransportType.WebSockets);
 
-            var services = new ServiceCollection();
-            services.AddEndPoint<ImmediatelyCompleteEndPoint>();
-            var builder = new SocketBuilder(services.BuildServiceProvider());
-            builder.UseEndPoint<ImmediatelyCompleteEndPoint>();
-            var app = builder.Build();
-            var options = new HttpSocketOptions();
-            options.WebSockets.CloseTimeout = TimeSpan.FromSeconds(1);
+        //    var services = new ServiceCollection();
+        //    services.AddEndPoint<ImmediatelyCompleteEndPoint>();
+        //    var builder = new SocketBuilder(services.BuildServiceProvider());
+        //    builder.UseEndPoint<ImmediatelyCompleteEndPoint>();
+        //    var app = builder.Build();
+        //    var options = new HttpSocketOptions();
+        //    options.WebSockets.CloseTimeout = TimeSpan.FromSeconds(1);
 
-            var task = dispatcher.ExecuteAsync(context, options, app);
+        //    var task = dispatcher.ExecuteAsync(context, options, app);
 
-            await task.OrTimeout();
-        }
+        //    await task.OrTimeout();
+        //}
 
         [Theory]
         [InlineData(TransportType.WebSockets)]

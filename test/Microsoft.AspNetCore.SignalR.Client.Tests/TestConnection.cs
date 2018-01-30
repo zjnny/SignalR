@@ -18,7 +18,7 @@ using Newtonsoft.Json;
 
 namespace Microsoft.AspNetCore.SignalR.Client.Tests
 {
-    internal class TestConnection : IConnection
+    public class TestConnection : IConnection
     {
         private TaskCompletionSource<object> _started = new TaskCompletionSource<object>();
         private TaskCompletionSource<object> _disposed = new TaskCompletionSource<object>();

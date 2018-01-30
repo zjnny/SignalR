@@ -228,42 +228,42 @@ namespace Microsoft.AspNetCore.Sockets.Tests
             }
         }
 
-        [Fact]
-        public async Task TransportFailsOnTimeoutWithErrorWhenApplicationFailsAndClientDoesNotSendCloseFrame()
-        {
-            using (StartLog(out var loggerFactory))
-            {
-                var transportToApplication = Channel.CreateUnbounded<byte[]>();
-                var applicationToTransport = Channel.CreateUnbounded<byte[]>();
+        //[Fact]
+        //public async Task TransportFailsOnTimeoutWithErrorWhenApplicationFailsAndClientDoesNotSendCloseFrame()
+        //{
+        //    using (StartLog(out var loggerFactory))
+        //    {
+        //        var transportToApplication = Channel.CreateUnbounded<byte[]>();
+        //        var applicationToTransport = Channel.CreateUnbounded<byte[]>();
 
-                using (var transportSide = ChannelConnection.Create<byte[]>(applicationToTransport, transportToApplication))
-                using (var applicationSide = ChannelConnection.Create<byte[]>(transportToApplication, applicationToTransport))
-                using (var feature = new TestWebSocketConnectionFeature())
-                {
-                    var options = new WebSocketOptions
-                    {
-                        CloseTimeout = TimeSpan.FromSeconds(1)
-                    };
+        //        using (var transportSide = ChannelConnection.Create<byte[]>(applicationToTransport, transportToApplication))
+        //        using (var applicationSide = ChannelConnection.Create<byte[]>(transportToApplication, applicationToTransport))
+        //        using (var feature = new TestWebSocketConnectionFeature())
+        //        {
+        //            var options = new WebSocketOptions
+        //            {
+        //                CloseTimeout = TimeSpan.FromSeconds(1)
+        //            };
 
-                    var connectionContext = new DefaultConnectionContext(string.Empty, null, null);
-                    var ws = new WebSocketsTransport(options, transportSide, connectionContext, loggerFactory);
+        //            var connectionContext = new DefaultConnectionContext(string.Empty, null, null);
+        //            var ws = new WebSocketsTransport(options, transportSide, connectionContext, loggerFactory);
 
-                    var serverSocket = await feature.AcceptAsync();
-                    // Give the server socket to the transport and run it
-                    var transport = ws.ProcessSocketAsync(serverSocket);
+        //            var serverSocket = await feature.AcceptAsync();
+        //            // Give the server socket to the transport and run it
+        //            var transport = ws.ProcessSocketAsync(serverSocket);
 
-                    // Run the client socket
-                    var client = feature.Client.ExecuteAndCaptureFramesAsync();
+        //            // Run the client socket
+        //            var client = feature.Client.ExecuteAndCaptureFramesAsync();
 
-                    // fail the client to server channel
-                    applicationToTransport.Writer.TryComplete(new Exception());
+        //            // fail the client to server channel
+        //            applicationToTransport.Writer.TryComplete(new Exception());
 
-                    await Assert.ThrowsAsync<Exception>(() => transport).OrTimeout();
+        //            await Assert.ThrowsAsync<Exception>(() => transport).OrTimeout();
 
-                    Assert.Equal(WebSocketState.Aborted, serverSocket.State);
-                }
-            }
-        }
+        //            Assert.Equal(WebSocketState.Aborted, serverSocket.State);
+        //        }
+        //    }
+        //}
 
         [Fact]
         public async Task ServerGracefullyClosesWhenApplicationEndsThenClientSendsCloseFrame()
