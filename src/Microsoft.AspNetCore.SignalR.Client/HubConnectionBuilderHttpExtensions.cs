@@ -19,6 +19,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
         public static readonly string HeadersKey = "Headers";
         public static readonly string AccessTokenFactoryKey = "AccessTokenFactory";
         public static readonly string WebSocketOptionsKey = "WebSocketOptions";
+        public static readonly string ReconnectKey = "Reconnect";
 
         public static IHubConnectionBuilder WithUrl(this IHubConnectionBuilder hubConnectionBuilder, string url)
         {
@@ -40,18 +41,19 @@ namespace Microsoft.AspNetCore.SignalR.Client
             hubConnectionBuilder.ConfigureConnectionFactory(() =>
             {
                 var headers = hubConnectionBuilder.GetHeaders();
-                var httpOptions = new HttpOptions
+                var httpOptions = new HttpConnectionOptions
                 {
                     HttpMessageHandler = hubConnectionBuilder.GetMessageHandler(),
                     Headers = headers != null ? new ReadOnlyDictionary<string, string>(headers) : null,
                     AccessTokenFactory = hubConnectionBuilder.GetAccessTokenFactory(),
                     WebSocketOptions = hubConnectionBuilder.GetWebSocketOptions(),
+                    EnableReconnect = hubConnectionBuilder.GetReconnect()
                 };
 
                 return new HttpConnection(url,
                     hubConnectionBuilder.GetTransport(),
                     hubConnectionBuilder.GetLoggerFactory(),
-                    httpOptions, false);
+                    httpOptions);
             });
             return hubConnectionBuilder;
         }
@@ -111,6 +113,13 @@ namespace Microsoft.AspNetCore.SignalR.Client
             return hubConnectionBuilder;
         }
 
+        public static IHubConnectionBuilder WithReconnect(this IHubConnectionBuilder hubConnectionBuilder, bool enabled)
+        {
+            hubConnectionBuilder.AddSetting(ReconnectKey, enabled);
+
+            return hubConnectionBuilder;
+        }
+
         public static TransportType GetTransport(this IHubConnectionBuilder hubConnectionBuilder)
         {
             if (hubConnectionBuilder.TryGetSetting<TransportType>(TransportTypeKey, out var transportType))
@@ -151,6 +160,12 @@ namespace Microsoft.AspNetCore.SignalR.Client
         {
             hubConnectionBuilder.TryGetSetting<Action<ClientWebSocketOptions>>(WebSocketOptionsKey, out var webSocketOptions);
             return webSocketOptions;
+        }
+
+        public static bool GetReconnect(this IHubConnectionBuilder hubConnectionBuilder)
+        {
+            hubConnectionBuilder.TryGetSetting<bool>(ReconnectKey, out var reconnect);
+            return reconnect;
         }
     }
 }

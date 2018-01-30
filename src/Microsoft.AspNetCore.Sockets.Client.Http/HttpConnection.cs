@@ -33,7 +33,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
         private volatile ChannelConnection<byte[], SendMessage> _transportChannel;
         private readonly HttpClient _httpClient;
-        private readonly HttpOptions _httpOptions;
+        private readonly HttpConnectionOptions _httpOptions;
         private volatile ITransport _transport;
         private volatile Task _receiveLoopTask;
         private TaskCompletionSource<object> _startTcs;
@@ -68,16 +68,16 @@ namespace Microsoft.AspNetCore.Sockets.Client
         }
 
         public HttpConnection(Uri url, ILoggerFactory loggerFactory)
-            : this(url, TransportType.All, loggerFactory, httpOptions: null, reconnect: false)
+            : this(url, TransportType.All, loggerFactory, httpOptions: null)
         {
         }
 
         public HttpConnection(Uri url, TransportType transportType, ILoggerFactory loggerFactory)
-            : this(url, transportType, loggerFactory, httpOptions: null, reconnect: false)
+            : this(url, transportType, loggerFactory, httpOptions: null)
         {
         }
 
-        public HttpConnection(Uri url, TransportType transportType, ILoggerFactory loggerFactory, HttpOptions httpOptions, bool reconnect)
+        public HttpConnection(Uri url, TransportType transportType, ILoggerFactory loggerFactory, HttpConnectionOptions httpOptions)
         {
             Url = url ?? throw new ArgumentNullException(nameof(url));
 
@@ -95,10 +95,10 @@ namespace Microsoft.AspNetCore.Sockets.Client
             _transportFactory = new DefaultTransportFactory(transportType, _loggerFactory, _httpClient, httpOptions);
             _logScope = new ConnectionLogScope();
             _scopeDisposable = _logger.BeginScope(_logScope);
-            _reconnectEnabled = reconnect;
+            _reconnectEnabled = httpOptions?.EnableReconnect ?? true;
         }
 
-        public HttpConnection(Uri url, ITransportFactory transportFactory, ILoggerFactory loggerFactory, HttpOptions httpOptions, bool reconnect)
+        public HttpConnection(Uri url, ITransportFactory transportFactory, ILoggerFactory loggerFactory, HttpConnectionOptions httpOptions)
         {
             Url = url ?? throw new ArgumentNullException(nameof(url));
             _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
@@ -109,7 +109,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             _transportFactory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
             _logScope = new ConnectionLogScope();
             _scopeDisposable = _logger.BeginScope(_logScope);
-            _reconnectEnabled = reconnect;
+            _reconnectEnabled = httpOptions?.EnableReconnect ?? true;
         }
 
         public async Task StartAsync() => await StartAsyncCore().ForceAsync();

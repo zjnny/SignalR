@@ -32,7 +32,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
         {
         }
 
-        public WebSocketsTransport(HttpOptions httpOptions, ILoggerFactory loggerFactory)
+        public WebSocketsTransport(HttpConnectionOptions httpOptions, ILoggerFactory loggerFactory)
         {
             _webSocket = new ClientWebSocket();
 

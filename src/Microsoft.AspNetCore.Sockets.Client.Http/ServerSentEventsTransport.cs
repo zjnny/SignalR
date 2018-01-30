@@ -21,7 +21,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
     {
         private static readonly MemoryPool _memoryPool = new MemoryPool();
         private readonly HttpClient _httpClient;
-        private readonly HttpOptions _httpOptions;
+        private readonly HttpConnectionOptions _httpOptions;
         private readonly ILogger _logger;
         private readonly CancellationTokenSource _transportCts = new CancellationTokenSource();
         private readonly ServerSentEventsMessageParser _parser = new ServerSentEventsMessageParser();
@@ -36,7 +36,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             : this(httpClient, null, null)
         { }
 
-        public ServerSentEventsTransport(HttpClient httpClient, HttpOptions httpOptions, ILoggerFactory loggerFactory)
+        public ServerSentEventsTransport(HttpClient httpClient, HttpConnectionOptions httpOptions, ILoggerFactory loggerFactory)
         {
             if (httpClient == null)
             {

@@ -17,7 +17,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
     internal static class SendUtils
     {
         public static async Task SendMessages(Uri sendUrl, Channel<byte[], SendMessage> application, HttpClient httpClient,
-            HttpOptions httpOptions, CancellationTokenSource transportCts, ILogger logger)
+            HttpConnectionOptions httpOptions, CancellationTokenSource transportCts, ILogger logger)
         {
             logger.SendStarted();
             IList<SendMessage> messages = null;
@@ -108,7 +108,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             logger.SendStopped();
         }
 
-        public static void PrepareHttpRequest(HttpRequestMessage request, HttpOptions httpOptions)
+        public static void PrepareHttpRequest(HttpRequestMessage request, HttpConnectionOptions httpOptions)
         {
             if (httpOptions?.Headers != null)
             {

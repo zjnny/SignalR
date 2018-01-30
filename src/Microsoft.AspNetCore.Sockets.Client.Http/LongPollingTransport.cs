@@ -18,7 +18,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
     public class LongPollingTransport : ITransport
     {
         private readonly HttpClient _httpClient;
-        private readonly HttpOptions _httpOptions;
+        private readonly HttpConnectionOptions _httpOptions;
         private readonly ILogger _logger;
         private Channel<byte[], SendMessage> _application;
         private Task _sender;
@@ -34,7 +34,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             : this(httpClient, null, null)
         { }
 
-        public LongPollingTransport(HttpClient httpClient, HttpOptions httpOptions, ILoggerFactory loggerFactory)
+        public LongPollingTransport(HttpClient httpClient, HttpConnectionOptions httpOptions, ILoggerFactory loggerFactory)
         {
             _httpClient = httpClient;
             _httpOptions = httpOptions;

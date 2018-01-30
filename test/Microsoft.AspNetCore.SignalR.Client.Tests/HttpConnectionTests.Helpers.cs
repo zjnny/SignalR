@@ -18,15 +18,16 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             string url = null, ITransport transport = null, bool allowReconnect = true)
         {
             loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
-            var httpOptions = new HttpOptions()
+            var httpOptions = new HttpConnectionOptions()
             {
                 HttpMessageHandler = httpHandler ?? TestHttpMessageHandler.CreateDefault(),
+                EnableReconnect = allowReconnect
             };
             var uri = new Uri(url ?? "http://fakeuri.org/");
 
             var connection = (transport != null) ?
-                new HttpConnection(uri, new TestTransportFactory(transport), loggerFactory, httpOptions, allowReconnect) :
-                new HttpConnection(uri, TransportType.LongPolling, loggerFactory, httpOptions, allowReconnect);
+                new HttpConnection(uri, new TestTransportFactory(transport), loggerFactory, httpOptions) :
+                new HttpConnection(uri, TransportType.LongPolling, loggerFactory, httpOptions);
 
             return connection;
         }

@@ -8,7 +8,7 @@ using System.Net.WebSockets;
 
 namespace Microsoft.AspNetCore.Sockets.Client.Http
 {
-    public class HttpOptions
+    public class HttpConnectionOptions
     {
         public HttpMessageHandler HttpMessageHandler { get; set; }
         public IReadOnlyCollection<KeyValuePair<string, string>> Headers { get; set; }
@@ -23,5 +23,7 @@ namespace Microsoft.AspNetCore.Sockets.Client.Http
         /// has been applied.
         /// </remarks>
         public Action<ClientWebSocketOptions> WebSocketOptions { get; set; }
+
+        public bool EnableReconnect { get; set; } = true;
     }
 }

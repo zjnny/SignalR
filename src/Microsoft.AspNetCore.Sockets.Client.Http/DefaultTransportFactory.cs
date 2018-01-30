@@ -11,12 +11,12 @@ namespace Microsoft.AspNetCore.Sockets.Client
     public class DefaultTransportFactory : ITransportFactory
     {
         private readonly HttpClient _httpClient;
-        private readonly HttpOptions _httpOptions;
+        private readonly HttpConnectionOptions _httpOptions;
         private readonly TransportType _requestedTransportType;
         private readonly ILoggerFactory _loggerFactory;
         private static volatile bool _websocketsSupported = true;
 
-        public DefaultTransportFactory(TransportType requestedTransportType, ILoggerFactory loggerFactory, HttpClient httpClient, HttpOptions httpOptions)
+        public DefaultTransportFactory(TransportType requestedTransportType, ILoggerFactory loggerFactory, HttpClient httpClient, HttpConnectionOptions httpOptions)
         {
             if (requestedTransportType <= 0 || requestedTransportType > TransportType.All)
             {
