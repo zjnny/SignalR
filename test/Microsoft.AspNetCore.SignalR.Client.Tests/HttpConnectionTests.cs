@@ -139,5 +139,48 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                     Assert.Equal(TransferMode.Binary, transferModeFeature.TransferMode);
                 });
         }
+
+        [Fact]
+        public async Task Reconnect()
+        {
+            using (StartLog(out var loggerFactory))
+            {
+                var logger = loggerFactory.CreateLogger<HttpConnectionTests>();
+
+                var tcs = new TaskCompletionSource<object>();
+                var testTransport = new TestTransport(onTransportStart: () =>
+                {
+                    tcs.TrySetResult(null);
+                    return Task.CompletedTask;
+                });
+
+                await WithConnectionAsync(
+                    CreateConnection(transport: testTransport),
+                    async (connection, closed) =>
+                    {
+                        logger.LogInformation("Starting connection");
+                        await connection.StartAsync().OrTimeout();
+                        logger.LogInformation("Started connection");
+
+                        await tcs.Task.OrTimeout();
+                        tcs = new TaskCompletionSource<object>();
+                        testTransport.Application.Writer.Complete();
+                        await tcs.Task.OrTimeout();
+
+                        var onReceived = new SyncPoint();
+                        connection.OnReceived(_ => onReceived.WaitToContinue().OrTimeout());
+
+                        // This will trigger the received callback
+                        testTransport.Application.Writer.TryWrite(Array.Empty<byte>());
+
+                        await onReceived.WaitForSyncPoint().OrTimeout();
+
+                        // Dispose should complete, even though the receive callbacks are completely blocked up.
+                        logger.LogInformation("Disposing connection");
+                        await connection.DisposeAsync().OrTimeout(TimeSpan.FromSeconds(10));
+                        logger.LogInformation("Disposed connection");
+                    });
+            }
+        }
     }
 }

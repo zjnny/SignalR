@@ -223,7 +223,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                     });
 
                     await WithConnectionAsync(
-                        CreateConnection(httpHandler, loggerFactory),
+                        CreateConnection(httpHandler, loggerFactory, allowReconnect: false),
                         async (connection, closed) =>
                     {
                         await connection.StartAsync().OrTimeout();
@@ -258,7 +258,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                         var stopTask = connection.StopAsync().OrTimeout();
 
                         // Once the transport starts shutting down
-                        await transportStop.WaitForSyncPoint();
+                        await transportStop.WaitForSyncPoint().OrTimeout();
 
                         // Start disposing and allow it to finish shutting down
                         var disposeTask = connection.DisposeAsync().OrTimeout();
@@ -314,7 +314,7 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                 var expected = new Exception("Whoops!");
 
                 await WithConnectionAsync(
-                    CreateConnection(transport: testTransport),
+                    CreateConnection(transport: testTransport, allowReconnect: false),
                 async (connection, closed) =>
                 {
                     await connection.StartAsync().OrTimeout();

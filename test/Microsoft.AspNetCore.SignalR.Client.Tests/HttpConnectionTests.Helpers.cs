@@ -14,7 +14,8 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
 {
     public partial class HttpConnectionTests
     {
-        private static HttpConnection CreateConnection(HttpMessageHandler httpHandler = null, ILoggerFactory loggerFactory = null, string url = null, ITransport transport = null)
+        private static HttpConnection CreateConnection(HttpMessageHandler httpHandler = null, ILoggerFactory loggerFactory = null,
+            string url = null, ITransport transport = null, bool allowReconnect = true)
         {
             loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
             var httpOptions = new HttpOptions()
@@ -24,8 +25,8 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             var uri = new Uri(url ?? "http://fakeuri.org/");
 
             var connection = (transport != null) ?
-                new HttpConnection(uri, new TestTransportFactory(transport), loggerFactory, httpOptions) :
-                new HttpConnection(uri, TransportType.LongPolling, loggerFactory, httpOptions);
+                new HttpConnection(uri, new TestTransportFactory(transport), loggerFactory, httpOptions, allowReconnect) :
+                new HttpConnection(uri, TransportType.LongPolling, loggerFactory, httpOptions, allowReconnect);
 
             return connection;
         }

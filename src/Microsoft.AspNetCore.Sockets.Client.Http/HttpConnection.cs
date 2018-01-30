@@ -49,6 +49,8 @@ namespace Microsoft.AspNetCore.Sockets.Client
         private readonly TransportType _requestedTransportType = TransportType.All;
         private readonly ConnectionLogScope _logScope;
         private readonly IDisposable _scopeDisposable;
+        private readonly bool _reconnectEnabled;
+        private bool _closeCalled;
 
         public Uri Url { get; }
 
@@ -66,16 +68,16 @@ namespace Microsoft.AspNetCore.Sockets.Client
         }
 
         public HttpConnection(Uri url, ILoggerFactory loggerFactory)
-            : this(url, TransportType.All, loggerFactory, httpOptions: null)
+            : this(url, TransportType.All, loggerFactory, httpOptions: null, reconnect: false)
         {
         }
 
         public HttpConnection(Uri url, TransportType transportType, ILoggerFactory loggerFactory)
-            : this(url, transportType, loggerFactory, httpOptions: null)
+            : this(url, transportType, loggerFactory, httpOptions: null, reconnect: false)
         {
         }
 
-        public HttpConnection(Uri url, TransportType transportType, ILoggerFactory loggerFactory, HttpOptions httpOptions)
+        public HttpConnection(Uri url, TransportType transportType, ILoggerFactory loggerFactory, HttpOptions httpOptions, bool reconnect)
         {
             Url = url ?? throw new ArgumentNullException(nameof(url));
 
@@ -93,9 +95,10 @@ namespace Microsoft.AspNetCore.Sockets.Client
             _transportFactory = new DefaultTransportFactory(transportType, _loggerFactory, _httpClient, httpOptions);
             _logScope = new ConnectionLogScope();
             _scopeDisposable = _logger.BeginScope(_logScope);
+            _reconnectEnabled = reconnect;
         }
 
-        public HttpConnection(Uri url, ITransportFactory transportFactory, ILoggerFactory loggerFactory, HttpOptions httpOptions)
+        public HttpConnection(Uri url, ITransportFactory transportFactory, ILoggerFactory loggerFactory, HttpOptions httpOptions, bool reconnect)
         {
             Url = url ?? throw new ArgumentNullException(nameof(url));
             _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
@@ -106,6 +109,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             _transportFactory = transportFactory ?? throw new ArgumentNullException(nameof(transportFactory));
             _logScope = new ConnectionLogScope();
             _scopeDisposable = _logger.BeginScope(_logScope);
+            _reconnectEnabled = reconnect;
         }
 
         public async Task StartAsync() => await StartAsyncCore().ForceAsync();
@@ -217,26 +221,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
                     // From this point on, StartAsync can be called at any time.
                     ChangeState(from: ConnectionState.Connected, to: ConnectionState.Disconnected);
 
-                    _closeTcs.SetResult(null);
-
-                    try
-                    {
-                        if (t.IsFaulted)
-                        {
-                            Closed?.Invoke(t.Exception.InnerException);
-                        }
-                        else
-                        {
-                            // Call the closed event. If there was an abort exception, it will be flowed forward
-                            // However, if there wasn't, this will just be null and we're good
-                            Closed?.Invoke(abortException);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        // Suppress (but log) the exception, this is user code
-                        _logger.ErrorDuringClosedEvent(ex);
-                    }
+                    await Reconnect(t, abortException);
                 });
 
                 _receiveLoopTask = ReceiveAsync();
@@ -347,6 +332,42 @@ namespace Microsoft.AspNetCore.Sockets.Client
             {
                 _logger.ErrorStartingTransport(_transport, ex);
                 throw;
+            }
+        }
+
+        private async Task Reconnect(Task originalClose, Exception abortException)
+        {
+            // TODO: configurable reconnect
+            for (var i = 0; i < 1 && _closeCalled == false && _reconnectEnabled == true; i++)
+            {
+                try
+                {
+                    await StartAsyncCore();
+                    return;
+                }
+                catch { }
+            }
+
+            _closeCalled = false;
+            _closeTcs.SetResult(null);
+
+            try
+            {
+                if (originalClose.IsFaulted)
+                {
+                    Closed?.Invoke(originalClose.Exception.InnerException);
+                }
+                else
+                {
+                    // Call the closed event. If there was an abort exception, it will be flowed forward
+                    // However, if there wasn't, this will just be null and we're good
+                    Closed?.Invoke(abortException);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Suppress (but log) the exception, this is user code
+                _logger.ErrorDuringClosedEvent(ex);
             }
         }
 
@@ -494,6 +515,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
                     _logger.SkippingStop();
                     return;
                 }
+                _closeCalled = true;
             }
 
             // Note that this method can be called at the same time when the connection is being closed from the server

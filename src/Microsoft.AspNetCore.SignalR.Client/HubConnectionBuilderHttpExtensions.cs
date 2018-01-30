@@ -51,7 +51,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
                 return new HttpConnection(url,
                     hubConnectionBuilder.GetTransport(),
                     hubConnectionBuilder.GetLoggerFactory(),
-                    httpOptions);
+                    httpOptions, false);
             });
             return hubConnectionBuilder;
         }
