@@ -30,66 +30,66 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                 });
             }
 
-            [Fact]
-            public Task AbortAsyncWhileStoppingTriggersClosedEventWithException()
-            {
-                return WithConnectionAsync(CreateConnection(transport: new TestTransport(onTransportStop: SyncPoint.Create(2, out var syncPoints))), async (connection, closed) =>
-                {
-                    // Start the connection
-                    await connection.StartAsync().OrTimeout();
+            //[Fact]
+            //public Task AbortAsyncWhileStoppingTriggersClosedEventWithException()
+            //{
+            //    return WithConnectionAsync(CreateConnection(transport: new TestTransport(onTransportStop: SyncPoint.Create(2, out var syncPoints))), async (connection, closed) =>
+            //    {
+            //        // Start the connection
+            //        await connection.StartAsync().OrTimeout();
 
-                    // Stop normally
-                    var stopTask = connection.StopAsync().OrTimeout();
+            //        // Stop normally
+            //        var stopTask = connection.StopAsync().OrTimeout();
 
-                    // Wait to reach the first sync point
-                    await syncPoints[0].WaitForSyncPoint().OrTimeout();
+            //        // Wait to reach the first sync point
+            //        await syncPoints[0].WaitForSyncPoint().OrTimeout();
 
-                    // Abort with an error
-                    var expected = new Exception("Ruh roh!");
-                    var abortTask = connection.AbortAsync(expected).OrTimeout();
+            //        // Abort with an error
+            //        var expected = new Exception("Ruh roh!");
+            //        var abortTask = connection.AbortAsync(expected).OrTimeout();
 
-                    // Wait for the sync point to hit again
-                    await syncPoints[1].WaitForSyncPoint().OrTimeout();
+            //        // Wait for the sync point to hit again
+            //        await syncPoints[1].WaitForSyncPoint().OrTimeout();
 
-                    // Release sync point 0
-                    syncPoints[0].Continue();
+            //        // Release sync point 0
+            //        syncPoints[0].Continue();
 
-                    // We should close with the error from Abort (because it was set by the call to Abort even though Stop triggered the close)
-                    var actual = await Assert.ThrowsAsync<Exception>(async () => await closed.OrTimeout());
-                    Assert.Same(expected, actual);
+            //        // We should close with the error from Abort (because it was set by the call to Abort even though Stop triggered the close)
+            //        var actual = await Assert.ThrowsAsync<Exception>(async () => await closed.OrTimeout());
+            //        Assert.Same(expected, actual);
 
-                    // Clean-up
-                    syncPoints[1].Continue();
-                    await Task.WhenAll(stopTask, abortTask).OrTimeout();
-                });
-            }
+            //        // Clean-up
+            //        syncPoints[1].Continue();
+            //        await Task.WhenAll(stopTask, abortTask).OrTimeout();
+            //    });
+            //}
 
-            [Fact]
-            public Task StopAsyncWhileAbortingTriggersClosedEventWithoutException()
-            {
-                return WithConnectionAsync(CreateConnection(transport: new TestTransport(onTransportStop: SyncPoint.Create(2, out var syncPoints))), async (connection, closed) =>
-                {
-                    // Start the connection
-                    await connection.StartAsync().OrTimeout();
+            //[Fact]
+            //public Task StopAsyncWhileAbortingTriggersClosedEventWithoutException()
+            //{
+            //    return WithConnectionAsync(CreateConnection(transport: new TestTransport(onTransportStop: SyncPoint.Create(2, out var syncPoints))), async (connection, closed) =>
+            //    {
+            //        // Start the connection
+            //        await connection.StartAsync().OrTimeout();
 
-                    // Abort with an error
-                    var expected = new Exception("Ruh roh!");
-                    var abortTask = connection.AbortAsync(expected).OrTimeout();
+            //        // Abort with an error
+            //        var expected = new Exception("Ruh roh!");
+            //        var abortTask = connection.AbortAsync(expected).OrTimeout();
 
-                    // Wait to reach the first sync point
-                    await syncPoints[0].WaitForSyncPoint().OrTimeout();
+            //        // Wait to reach the first sync point
+            //        await syncPoints[0].WaitForSyncPoint().OrTimeout();
 
-                    // Stop normally, without a sync point.
-                    // This should clear the exception, meaning Closed will not "throw"
-                    syncPoints[1].Continue();
-                    await connection.StopAsync();
-                    await closed.OrTimeout();
+            //        // Stop normally, without a sync point.
+            //        // This should clear the exception, meaning Closed will not "throw"
+            //        syncPoints[1].Continue();
+            //        await connection.StopAsync();
+            //        await closed.OrTimeout();
 
-                    // Clean-up
-                    syncPoints[0].Continue();
-                    await abortTask.OrTimeout();
-                });
-            }
+            //        // Clean-up
+            //        syncPoints[0].Continue();
+            //        await abortTask.OrTimeout();
+            //    });
+            //}
 
             [Fact]
             public Task StartAsyncCannotBeCalledWhileAbortAsyncInProgress()

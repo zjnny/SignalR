@@ -348,6 +348,14 @@ namespace Microsoft.AspNetCore.Sockets.Client
                 catch { }
             }
 
+            if (_connectionState == ConnectionState.Connected || _connectionState == ConnectionState.Connecting)
+            {
+                // Someone else triggered a connection attempt, we should return and not accidentally close their attempt
+                return;
+            }
+
+            // This should be safe to set because we are already closing the connection at this point
+            // And even if StopAsync is called right here it should NO-OP because the ConnectionState is Disconnected
             _closeCalled = false;
             _closeTcs.SetResult(null);
 
@@ -510,7 +518,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
         {
             lock (_stateChangeLock)
             {
-                if (!(_connectionState == ConnectionState.Connecting || _connectionState == ConnectionState.Connected))
+                if (!(_connectionState == ConnectionState.Connecting || _connectionState == ConnectionState.Connected) || _closeCalled)
                 {
                     _logger.SkippingStop();
                     return;

@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Client.Tests;
 using Microsoft.AspNetCore.Sockets.Client;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using Xunit;
 using Xunit.Abstractions;
@@ -361,6 +362,56 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                             // Stop the connection, and we should stop the transport
                             await connection.StopAsync().OrTimeout();
                             await longPollingTransport.Running.OrTimeout();
+                        });
+                }
+            }
+
+            [Fact]
+            public async Task ConnectionAutomaticallyReconnects()
+            {
+                using (StartLog(out var loggerFactory))
+                {
+                    var logger = loggerFactory.CreateLogger<HttpConnectionTests>();
+
+                    var tcs = new TaskCompletionSource<object>();
+                    var testTransport = new TestTransport(onTransportStart: () =>
+                    {
+                        tcs.TrySetResult(null);
+                        return Task.CompletedTask;
+                    });
+
+                    await WithConnectionAsync(
+                        CreateConnection(transport: testTransport, loggerFactory: loggerFactory),
+                        async (connection, closed) =>
+                        {
+                            logger.LogInformation("Starting connection");
+                            await connection.StartAsync().OrTimeout();
+                            logger.LogInformation("Started connection");
+
+                            // Wait for transport start
+                            await tcs.Task.OrTimeout();
+                            // Reset tcs to check for restart later
+                            tcs = new TaskCompletionSource<object>();
+                            // "Kill" connection to cause reconnect
+                            logger.LogInformation("Triggering reconnect");
+                            testTransport.Application.Writer.Complete();
+                            // Check for transport start again
+                            await tcs.Task.OrTimeout();
+                            logger.LogInformation("Connection reconnected");
+
+                            // Test to see if connection is alive
+                            var onReceived = new SyncPoint();
+                            connection.OnReceived(_ => onReceived.WaitToContinue().OrTimeout());
+
+                            // This will trigger the received callback
+                            testTransport.Application.Writer.TryWrite(Array.Empty<byte>());
+
+                            await onReceived.WaitForSyncPoint().OrTimeout();
+                            onReceived.Continue();
+
+                            logger.LogInformation("Disposing connection");
+                            await connection.DisposeAsync();
+                            logger.LogInformation("Disposed connection");
                         });
                 }
             }
