@@ -397,7 +397,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
                 }
                 _pendingCalls.Clear();
             }
-
+            _logger.LogError("Outstanding calls completed");
             try
             {
                 Closed?.Invoke(exception);
@@ -406,6 +406,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
             {
                 _logger.ErrorDuringClosedEvent(ex);
             }
+            _logger.LogError("Finished shutdown");
         }
 
         private async Task DispatchInvocationAsync(InvocationMessage invocation, CancellationToken cancellationToken)

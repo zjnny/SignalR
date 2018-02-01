@@ -92,7 +92,11 @@ namespace NonParallelTests
                     await hubConnection.StartAsync().OrTimeout();
 
                     var closeTcs = new TaskCompletionSource<Exception>();
-                    hubConnection.Closed += ex => closeTcs.TrySetResult(ex);
+                hubConnection.Closed += ex =>
+                {
+                    loggerFactory.CreateLogger("intest").LogError("closed called");
+                    closeTcs.TrySetResult(ex);
+                };
                     var exception = Assert.IsType<TimeoutException>(await closeTcs.Task.OrTimeout());
                     Assert.Equal("Server timeout (100.00ms) elapsed without receiving a message from the server.", exception.Message);
                 }
