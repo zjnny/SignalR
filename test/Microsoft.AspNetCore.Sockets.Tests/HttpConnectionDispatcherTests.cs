@@ -17,15 +17,21 @@ using Microsoft.AspNetCore.Http.Internal;
 using Microsoft.AspNetCore.Sockets.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Primitives;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Microsoft.AspNetCore.Sockets.Tests
 {
-    public class HttpConnectionDispatcherTests
+    public class HttpConnectionDispatcherTests : LoggedTest
     {
+        public HttpConnectionDispatcherTests(ITestOutputHelper output) : base(output)
+        {
+        }
+
         [Fact]
         public async Task NegotiateReservesConnectionIdAndReturnsIt()
         {
@@ -342,23 +348,26 @@ namespace Microsoft.AspNetCore.Sockets.Tests
         [Fact]
         public async Task LongPollingTimeoutSets200StatusCode()
         {
-            var manager = CreateConnectionManager();
-            var connection = manager.CreateConnection();
+            using (StartLog(out var loggerFactory, LogLevel.Trace))
+            {
+                var manager = CreateConnectionManager();
+                var connection = manager.CreateConnection();
 
-            var dispatcher = new HttpConnectionDispatcher(manager, new LoggerFactory());
+                var dispatcher = new HttpConnectionDispatcher(manager, new LoggerFactory());
 
-            var context = MakeRequest("/foo", connection);
+                var context = MakeRequest("/foo", connection);
 
-            var services = new ServiceCollection();
-            services.AddEndPoint<TestEndPoint>();
-            var builder = new SocketBuilder(services.BuildServiceProvider());
-            builder.UseEndPoint<TestEndPoint>();
-            var app = builder.Build();
-            var options = new HttpSocketOptions();
-            options.LongPolling.PollTimeout = TimeSpan.FromSeconds(2);
-            await dispatcher.ExecuteAsync(context, options, app).OrTimeout();
+                var services = new ServiceCollection();
+                services.AddEndPoint<TestEndPoint>();
+                var builder = new SocketBuilder(services.BuildServiceProvider());
+                builder.UseEndPoint<TestEndPoint>();
+                var app = builder.Build();
+                var options = new HttpSocketOptions();
+                options.LongPolling.PollTimeout = TimeSpan.FromSeconds(2);
+                await dispatcher.ExecuteAsync(context, options, app).OrTimeout();
 
-            Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+                Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+            }
         }
 
         //[Fact]
