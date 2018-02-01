@@ -40,78 +40,87 @@ namespace NonParallelTests
         [Fact]
         public async Task TransportFailsOnTimeoutWithErrorWhenApplicationFailsAndClientDoesNotSendCloseFrame()
         {
-            using (StartLog(out var loggerFactory))
+            await Task.Run(async () =>
             {
-                var transportToApplication = Channel.CreateUnbounded<byte[]>();
-                var applicationToTransport = Channel.CreateUnbounded<byte[]>();
-
-                using (var transportSide = ChannelConnection.Create<byte[]>(applicationToTransport, transportToApplication))
-                using (var applicationSide = ChannelConnection.Create<byte[]>(transportToApplication, applicationToTransport))
-                using (var feature = new TestWebSocketConnectionFeature())
+                using (StartLog(out var loggerFactory))
                 {
-                    var options = new WebSocketOptions
+                    var transportToApplication = Channel.CreateUnbounded<byte[]>();
+                    var applicationToTransport = Channel.CreateUnbounded<byte[]>();
+
+                    using (var transportSide = ChannelConnection.Create<byte[]>(applicationToTransport, transportToApplication))
+                    using (var applicationSide = ChannelConnection.Create<byte[]>(transportToApplication, applicationToTransport))
+                    using (var feature = new TestWebSocketConnectionFeature())
                     {
-                        CloseTimeout = TimeSpan.FromSeconds(1)
-                    };
+                        var options = new WebSocketOptions
+                        {
+                            CloseTimeout = TimeSpan.FromSeconds(1)
+                        };
 
-                    var connectionContext = new DefaultConnectionContext(string.Empty, null, null);
-                    var ws = new WebSocketsTransport(options, transportSide, connectionContext, loggerFactory);
+                        var connectionContext = new DefaultConnectionContext(string.Empty, null, null);
+                        var ws = new WebSocketsTransport(options, transportSide, connectionContext, loggerFactory);
 
-                    var serverSocket = await feature.AcceptAsync();
-                    // Give the server socket to the transport and run it
-                    var transport = ws.ProcessSocketAsync(serverSocket);
+                        var serverSocket = await feature.AcceptAsync();
+                        // Give the server socket to the transport and run it
+                        var transport = ws.ProcessSocketAsync(serverSocket);
 
-                    // Run the client socket
-                    var client = feature.Client.ExecuteAndCaptureFramesAsync();
+                        // Run the client socket
+                        var client = feature.Client.ExecuteAndCaptureFramesAsync();
 
-                    // fail the client to server channel
-                    applicationToTransport.Writer.TryComplete(new Exception());
+                        // fail the client to server channel
+                        applicationToTransport.Writer.TryComplete(new Exception());
 
-                    await Assert.ThrowsAsync<Exception>(() => transport).OrTimeout();
+                        await Assert.ThrowsAsync<Exception>(() => transport).OrTimeout();
 
-                    Assert.Equal(WebSocketState.Aborted, serverSocket.State);
+                        Assert.Equal(WebSocketState.Aborted, serverSocket.State);
+                    }
                 }
-            }
+            });
         }
 
         [Fact]
         public async Task ConnectionTerminatedIfServerTimeoutIntervalElapsesWithNoMessages()
         {
-            var connection = new TestConnection();
-            var hubConnection = new HubConnection(connection, new JsonHubProtocol(), new LoggerFactory());
+            await Task.Run(async () =>
+            {
+                var connection = new TestConnection();
+                var hubConnection = new HubConnection(connection, new JsonHubProtocol(), new LoggerFactory());
 
-            hubConnection.ServerTimeout = TimeSpan.FromMilliseconds(100);
+                hubConnection.ServerTimeout = TimeSpan.FromMilliseconds(100);
 
-            await hubConnection.StartAsync().OrTimeout();
+                await hubConnection.StartAsync().OrTimeout();
 
-            var closeTcs = new TaskCompletionSource<Exception>();
-            hubConnection.Closed += ex => closeTcs.TrySetResult(ex);
-            var exception = Assert.IsType<TimeoutException>(await closeTcs.Task.OrTimeout());
-            Assert.Equal("Server timeout (100.00ms) elapsed without receiving a message from the server.", exception.Message);
+                var closeTcs = new TaskCompletionSource<Exception>();
+                hubConnection.Closed += ex => closeTcs.TrySetResult(ex);
+                var exception = Assert.IsType<TimeoutException>(await closeTcs.Task.OrTimeout());
+                Assert.Equal("Server timeout (100.00ms) elapsed without receiving a message from the server.", exception.Message);
+            });
         }
 
         [Fact]
         public async Task WebSocketTransportTimesOutWhenCloseFrameNotReceived()
         {
-            var manager = CreateConnectionManager();
-            var connection = manager.CreateConnection();
+            await Task.Run(async () =>
+            {
+                var manager = CreateConnectionManager();
+                var connection = manager.CreateConnection();
 
-            var dispatcher = new HttpConnectionDispatcher(manager, new LoggerFactory());
+                var dispatcher = new HttpConnectionDispatcher(manager, new LoggerFactory());
 
-            var context = MakeRequest("/foo", connection);
-            SetTransport(context, TransportType.WebSockets);
+                var context = MakeRequest("/foo", connection);
+                SetTransport(context, TransportType.WebSockets);
 
-            var services = new ServiceCollection();
-            services.AddEndPoint<ImmediatelyCompleteEndPoint>();
-            var builder = new SocketBuilder(services.BuildServiceProvider());
-            builder.UseEndPoint<ImmediatelyCompleteEndPoint>();
-            var app = builder.Build();
-            var options = new HttpSocketOptions();
-            options.WebSockets.CloseTimeout = TimeSpan.FromSeconds(1);
+                var services = new ServiceCollection();
+                services.AddEndPoint<ImmediatelyCompleteEndPoint>();
+                var builder = new SocketBuilder(services.BuildServiceProvider());
+                builder.UseEndPoint<ImmediatelyCompleteEndPoint>();
+                var app = builder.Build();
+                var options = new HttpSocketOptions();
+                options.WebSockets.CloseTimeout = TimeSpan.FromSeconds(1);
 
-            var task = dispatcher.ExecuteAsync(context, options, app);
+                var task = dispatcher.ExecuteAsync(context, options, app);
 
-            await task.OrTimeout();
+                await task.OrTimeout();
+            });
         }
 
         private static DefaultHttpContext MakeRequest(string path, DefaultConnectionContext connection, string format = null)
