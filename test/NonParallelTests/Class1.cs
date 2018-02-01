@@ -80,8 +80,8 @@ namespace NonParallelTests
         [Fact]
         public async Task ConnectionTerminatedIfServerTimeoutIntervalElapsesWithNoMessages()
         {
-            await Task.Run(async () =>
-            {
+            //await Task.Run(async () =>
+            //{
                 using (StartLog(out var loggerFactory, LogLevel.Trace))
                 {
                     var connection = new TestConnection();
@@ -96,7 +96,7 @@ namespace NonParallelTests
                     var exception = Assert.IsType<TimeoutException>(await closeTcs.Task.OrTimeout());
                     Assert.Equal("Server timeout (100.00ms) elapsed without receiving a message from the server.", exception.Message);
                 }
-            });
+            //});
         }
 
         [Fact]
