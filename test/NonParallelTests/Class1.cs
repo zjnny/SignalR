@@ -42,7 +42,7 @@ namespace NonParallelTests
         {
             await Task.Run(async () =>
             {
-                using (StartLog(out var loggerFactory))
+                using (StartLog(out var loggerFactory, LogLevel.Trace))
                 {
                     var transportToApplication = Channel.CreateUnbounded<byte[]>();
                     var applicationToTransport = Channel.CreateUnbounded<byte[]>();
@@ -82,17 +82,20 @@ namespace NonParallelTests
         {
             await Task.Run(async () =>
             {
-                var connection = new TestConnection();
-                var hubConnection = new HubConnection(connection, new JsonHubProtocol(), new LoggerFactory());
+                using (StartLog(out var loggerFactory, LogLevel.Trace))
+                {
+                    var connection = new TestConnection();
+                    var hubConnection = new HubConnection(connection, new JsonHubProtocol(), loggerFactory);
 
-                hubConnection.ServerTimeout = TimeSpan.FromMilliseconds(100);
+                    hubConnection.ServerTimeout = TimeSpan.FromMilliseconds(100);
 
-                await hubConnection.StartAsync().OrTimeout();
+                    await hubConnection.StartAsync().OrTimeout();
 
-                var closeTcs = new TaskCompletionSource<Exception>();
-                hubConnection.Closed += ex => closeTcs.TrySetResult(ex);
-                var exception = Assert.IsType<TimeoutException>(await closeTcs.Task.OrTimeout());
-                Assert.Equal("Server timeout (100.00ms) elapsed without receiving a message from the server.", exception.Message);
+                    var closeTcs = new TaskCompletionSource<Exception>();
+                    hubConnection.Closed += ex => closeTcs.TrySetResult(ex);
+                    var exception = Assert.IsType<TimeoutException>(await closeTcs.Task.OrTimeout());
+                    Assert.Equal("Server timeout (100.00ms) elapsed without receiving a message from the server.", exception.Message);
+                }
             });
         }
 
@@ -101,25 +104,28 @@ namespace NonParallelTests
         {
             await Task.Run(async () =>
             {
-                var manager = CreateConnectionManager();
-                var connection = manager.CreateConnection();
+                using (StartLog(out var loggerFactory, LogLevel.Trace))
+                {
+                    var manager = CreateConnectionManager();
+                    var connection = manager.CreateConnection();
 
-                var dispatcher = new HttpConnectionDispatcher(manager, new LoggerFactory());
+                    var dispatcher = new HttpConnectionDispatcher(manager, loggerFactory);
 
-                var context = MakeRequest("/foo", connection);
-                SetTransport(context, TransportType.WebSockets);
+                    var context = MakeRequest("/foo", connection);
+                    SetTransport(context, TransportType.WebSockets);
 
-                var services = new ServiceCollection();
-                services.AddEndPoint<ImmediatelyCompleteEndPoint>();
-                var builder = new SocketBuilder(services.BuildServiceProvider());
-                builder.UseEndPoint<ImmediatelyCompleteEndPoint>();
-                var app = builder.Build();
-                var options = new HttpSocketOptions();
-                options.WebSockets.CloseTimeout = TimeSpan.FromSeconds(1);
+                    var services = new ServiceCollection();
+                    services.AddEndPoint<ImmediatelyCompleteEndPoint>();
+                    var builder = new SocketBuilder(services.BuildServiceProvider());
+                    builder.UseEndPoint<ImmediatelyCompleteEndPoint>();
+                    var app = builder.Build();
+                    var options = new HttpSocketOptions();
+                    options.WebSockets.CloseTimeout = TimeSpan.FromSeconds(1);
 
-                var task = dispatcher.ExecuteAsync(context, options, app);
+                    var task = dispatcher.ExecuteAsync(context, options, app);
 
-                await task.OrTimeout();
+                    await task.OrTimeout();
+                }
             });
         }
 
