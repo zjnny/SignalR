@@ -353,7 +353,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests
                 var manager = CreateConnectionManager();
                 var connection = manager.CreateConnection();
 
-                var dispatcher = new HttpConnectionDispatcher(manager, new LoggerFactory());
+                var dispatcher = new HttpConnectionDispatcher(manager, loggerFactory);
 
                 var context = MakeRequest("/foo", connection);
 
