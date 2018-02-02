@@ -1,4 +1,4 @@
-﻿<Project>
+<Project>
   <PropertyGroup>
     <MSBuildAllProjects>$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
   </PropertyGroup>
@@ -31,6 +31,7 @@
     <MicrosoftAspNetCoreTestHostPackageVersion>2.1.0-preview2-28212</MicrosoftAspNetCoreTestHostPackageVersion>
     <MicrosoftAspNetCoreTestingPackageVersion>2.1.0-preview2-28212</MicrosoftAspNetCoreTestingPackageVersion>
     <MicrosoftAspNetCoreWebSocketsPackageVersion>2.1.0-preview2-28212</MicrosoftAspNetCoreWebSocketsPackageVersion>
+    <MicrosoftCodeAnalysisCSharpWorkspacesPackageVersion>2.6.1</MicrosoftCodeAnalysisCSharpWorkspacesPackageVersion>
     <MicrosoftCSharpPackageVersion>4.5.0-preview2-26130-01</MicrosoftCSharpPackageVersion>
     <MicrosoftEntityFrameworkCoreDesignPackageVersion>2.1.0-preview2-28212</MicrosoftEntityFrameworkCoreDesignPackageVersion>
     <MicrosoftEntityFrameworkCoreSqlServerPackageVersion>2.1.0-preview2-28212</MicrosoftEntityFrameworkCoreSqlServerPackageVersion>
