@@ -46,6 +46,20 @@ describe("HttpConnection", () => {
         }
     });
 
+    it("Does not normalize url that starts with //", async (done) => {
+        const options: IHttpConnectionOptions = {
+            ...commonOptions,
+            httpClient: new TestHttpClient()
+                .on("POST", (r) => Promise.reject("error"))
+                .on("GET", (r) => ""),
+        } as IHttpConnectionOptions;
+
+        const connection = new HttpConnection("//localhost", options);
+
+        expect(connection.baseUrl).toBe("//localhost");
+        done();
+    });
+
     it("cannot start a running connection", async (done) => {
         const options: IHttpConnectionOptions = {
             ...commonOptions,
