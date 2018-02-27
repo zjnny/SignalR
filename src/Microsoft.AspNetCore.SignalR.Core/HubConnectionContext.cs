@@ -31,7 +31,7 @@ namespace Microsoft.AspNetCore.SignalR
         private static readonly PassThroughEncoder PassThroughEncoder = new PassThroughEncoder();
 
         private readonly ConnectionContext _connectionContext;
-        private readonly Channel<HubMessage> _output;
+        private readonly Channel<byte[]> _output;
         private readonly ILogger _logger;
         private readonly CancellationTokenSource _connectionAbortedTokenSource = new CancellationTokenSource();
         private readonly TaskCompletionSource<object> _abortCompletedTcs = new TaskCompletionSource<object>();
@@ -41,14 +41,14 @@ namespace Microsoft.AspNetCore.SignalR
         private long _lastSendTimestamp = Stopwatch.GetTimestamp();
 
         public HubConnectionContext(ConnectionContext connectionContext, TimeSpan keepAliveInterval, ILoggerFactory loggerFactory): 
-            this(connectionContext, keepAliveInterval, loggerFactory, Channel.CreateUnbounded<HubMessage>())
+            this(connectionContext, keepAliveInterval, loggerFactory, Channel.CreateUnbounded<byte[]>())
         {
         }
 
         internal HubConnectionContext(ConnectionContext connectionContext, 
                                       TimeSpan keepAliveInterval, 
                                       ILoggerFactory loggerFactory, 
-                                      Channel<HubMessage> output)
+                                      Channel<byte[]> output)
         {
             _output = output;
             _connectionContext = connectionContext;
@@ -90,7 +90,7 @@ namespace Microsoft.AspNetCore.SignalR
         {
             while (await _output.Writer.WaitToWriteAsync())
             {
-                if (_output.Writer.TryWrite(message))
+                if (_output.Writer.TryWrite(message.WriteMessage(ProtocolReaderWriter)))
                 {
                     return;
                 }
@@ -228,9 +228,9 @@ namespace Microsoft.AspNetCore.SignalR
                 {
                     while (_output.Reader.TryRead(out var hubMessage))
                     {
-                        var buffer = ProtocolReaderWriter.WriteMessage(hubMessage);
+                        //var buffer = ProtocolReaderWriter.WriteMessage(hubMessage);
 
-                        await _connectionContext.Transport.Output.WriteAsync(buffer);
+                        await _connectionContext.Transport.Output.WriteAsync(hubMessage);
 
                         Interlocked.Exchange(ref _lastSendTimestamp, Stopwatch.GetTimestamp());
                     }
@@ -257,11 +257,11 @@ namespace Microsoft.AspNetCore.SignalR
                 // adding a Ping message when the transport is full is unnecessary since the
                 // transport is still in the process of sending frames.
 
-                if (_output.Writer.TryWrite(PingMessage.Instance))
+                //if (_output.Writer.TryWrite(PingMessage.Instance))
                 {
                     _logger.SentPing();
                 }
-                else
+                //else
                 {
                     // This isn't necessarily an error, it just indicates that the transport is applying backpressure right now.
                     _logger.TransportBufferFull();
