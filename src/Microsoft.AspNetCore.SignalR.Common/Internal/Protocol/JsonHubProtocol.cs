@@ -50,12 +50,33 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
 
         public bool TryParseMessage(ref ReadOnlyBuffer<byte> input, IInvocationBinder binder, out HubMessage message)
         {
-            throw new NotImplementedException();
+            if (TextMessageFormat.TrySliceMessage(ref input, out var payload))
+            {
+                // TODO: Before submitting PR, build a stream over ReadOnlyBuffer
+                using (var ms = new MemoryStream(payload.ToArray()))
+                {
+                    message = ParseMessage(ms, binder);
+                }
+                return true;
+            }
+            else
+            {
+                message = null;
+                return false;
+            }
         }
 
         public void WriteMessage(IOutput output, HubMessage message)
         {
-            throw new NotImplementedException();
+            // TODO: Before submitting PR, build a stream over IOutput
+            using (var ms = new MemoryStream())
+            {
+                WriteMessageCore(message, ms);
+                ms.Flush();
+
+                output.Write(ms.GetBuffer().AsReadOnlySpan().Slice(0, (int)ms.Length));
+                TextMessageFormat.WriteRecordSeparator(output);
+            }
         }
 
         private HubMessage ParseMessage(Stream input, IInvocationBinder binder)
