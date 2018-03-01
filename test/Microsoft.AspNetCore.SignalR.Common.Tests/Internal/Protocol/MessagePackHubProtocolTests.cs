@@ -308,7 +308,7 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
             AssertMessages(testData.Encoded, ref messageBuffer);
 
             // Unframe the message to check the binary encoding
-            Assert.True(BinaryMessageFormat.TryParseMessage(ref bytes, out var unframed));
+            Assert.True(BinaryMessageFormat.TrySliceMessage(ref bytes, out var unframed));
 
             // Check the baseline binary encoding, use Assert.True in order to configure the error message
             var actual = Convert.ToBase64String(unframed.ToArray());
@@ -419,7 +419,7 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
 
         private static void AssertMessages(MessagePackObject expectedOutput, ref ReadOnlyBuffer<byte> bytes)
         {
-            Assert.True(BinaryMessageFormat.TryParseMessage(ref bytes, out var message));
+            Assert.True(BinaryMessageFormat.TrySliceMessage(ref bytes, out var message));
             var obj = Unpack(message.ToArray());
             Assert.Equal(expectedOutput, obj);
         }
@@ -430,6 +430,7 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
             BinaryMessageFormat.WriteLengthPrefix(input.Length, pipe.Writer);
             pipe.Writer.Write(input);
             await pipe.Writer.FlushAsync();
+            pipe.Writer.Complete();
 
             var result = await pipe.Reader.ReadAsync();
             Assert.True(result.IsCompleted);

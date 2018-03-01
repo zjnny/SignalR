@@ -38,47 +38,34 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
 
         public bool TryParseMessage(ref ReadOnlyBuffer<byte> input, IInvocationBinder binder, out HubMessage message)
         {
-            throw new NotImplementedException();
+            if (BinaryMessageFormat.TrySliceMessage(ref input, out var payload))
+            {
+                // TODO: Before submitting PR ZOMG TOARRAY
+                using (var ms = new MemoryStream(payload.ToArray()))
+                {
+                    message = ParseMessage(ms, binder);
+                }
+                return true;
+            }
+            else
+            {
+                message = null;
+                return false;
+            }
         }
 
         public void WriteMessage(IOutput output, HubMessage message)
         {
-            throw new NotImplementedException();
+            // We're writing data into the memoryStream so that we can get the length prefix
+            using (var memoryStream = new MemoryStream())
+            {
+                WriteMessageCore(message, memoryStream);
+
+                var buffer = memoryStream.GetBuffer().AsReadOnlySpan().Slice(0, (int)memoryStream.Length);
+                BinaryMessageFormat.WriteLengthPrefix(buffer.Length, output);
+                output.Write(buffer);
+            }
         }
-
-        //public bool TryParseMessages(ReadOnlySpan<byte> input, IInvocationBinder binder, IList<HubMessage> messages)
-        //{
-        //    while (BinaryMessageParser.TryParseMessage(ref input, out var payload))
-        //    {
-        //        using (var memoryStream = new MemoryStream(payload.ToArray()))
-        //        {
-        //            messages.Add(ParseMessage(memoryStream, binder));
-        //        }
-        //    }
-
-        //    return messages.Count > 0;
-        //}
-
-        //public void WriteMessage(HubMessage message, Stream output)
-        //{
-        //    // We're writing data into the memoryStream so that we can get the length prefix
-        //    using (var memoryStream = new MemoryStream())
-        //    {
-        //        WriteMessageCore(message, memoryStream);
-        //        if (memoryStream.TryGetBuffer(out var buffer))
-        //        {
-        //            // Write the buffer directly
-        //            BinaryMessageFormatter.WriteLengthPrefix(buffer.Count, output);
-        //            output.Write(buffer.Array, buffer.Offset, buffer.Count);
-        //        }
-        //        else
-        //        {
-        //            BinaryMessageFormatter.WriteLengthPrefix(memoryStream.Length, output);
-        //            memoryStream.Position = 0;
-        //            memoryStream.CopyTo(output);
-        //        }
-        //    }
-        //}
 
         private static HubMessage ParseMessage(Stream input, IInvocationBinder binder)
         {
@@ -246,11 +233,11 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
             }
         }
 
-        private static T ApplyHeaders<T>(IDictionary<string, string> source, T destination) where T: HubInvocationMessage
+        private static T ApplyHeaders<T>(IDictionary<string, string> source, T destination) where T : HubInvocationMessage
         {
-            if(source != null && source.Count > 0)
+            if (source != null && source.Count > 0)
             {
-                foreach(var header in source)
+                foreach (var header in source)
                 {
                     destination.Headers[header.Key] = header.Value;
                 }

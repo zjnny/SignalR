@@ -20,42 +20,44 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
 
         public static void WriteMessage(NegotiationMessage negotiationMessage, Stream output)
         {
-            throw new NotImplementedException();
-            //using (var writer = new JsonTextWriter(new StreamWriter(output, _utf8NoBom, 1024, leaveOpen: true)))
-            //{
-            //    writer.WriteStartObject();
-            //    writer.WritePropertyName(ProtocolPropertyName);
-            //    writer.WriteValue(negotiationMessage.Protocol);
-            //    writer.WriteEndObject();
-            //}
+            // TODO: Another place to use the IOutput stream wrapper
+            using (var writer = new JsonTextWriter(new StreamWriter(output, _utf8NoBom, 1024, leaveOpen: true)))
+            {
+                writer.WriteStartObject();
+                writer.WritePropertyName(ProtocolPropertyName);
+                writer.WriteValue(negotiationMessage.Protocol);
+                writer.WriteEndObject();
+            }
 
-            //TextMessageFormatter.WriteRecordSeparator(output);
+            // TODO: Replace with TextMessageFormat.WriteRecordSeparator
+            output.Write(new[] { (byte)TextMessageFormat.RecordSeparator }, 0, 1);
         }
 
         public static bool TryParseMessage(ReadOnlySpan<byte> input, out NegotiationMessage negotiationMessage)
         {
-            throw new NotImplementedException();
-            //if (!TextMessageParser.TryParseMessage(ref input, out var payload))
-            //{
-            //    throw new InvalidDataException("Unable to parse payload as a negotiation message.");
-            //}
+            // TODO: Gross gross gross.
+            var buffer = new ReadOnlyBuffer<byte>(input.ToArray());
+            if (!TextMessageFormat.TrySliceMessage(ref buffer, out var payload))
+            {
+                throw new InvalidDataException("Unable to parse payload as a negotiation message.");
+            }
 
-            //using (var memoryStream = new MemoryStream(payload.ToArray()))
-            //{
-            //    using (var reader = new JsonTextReader(new StreamReader(memoryStream)))
-            //    {
-            //        var token = JToken.ReadFrom(reader);
-            //        if (token == null || token.Type != JTokenType.Object)
-            //        {
-            //            throw new InvalidDataException($"Unexpected JSON Token Type '{token?.Type}'. Expected a JSON Object.");
-            //        }
+            using (var memoryStream = new MemoryStream(payload.ToArray()))
+            {
+                using (var reader = new JsonTextReader(new StreamReader(memoryStream)))
+                {
+                    var token = JToken.ReadFrom(reader);
+                    if (token == null || token.Type != JTokenType.Object)
+                    {
+                        throw new InvalidDataException($"Unexpected JSON Token Type '{token?.Type}'. Expected a JSON Object.");
+                    }
 
-            //        var negotiationJObject = (JObject)token;
-            //        var protocol = JsonUtils.GetRequiredProperty<string>(negotiationJObject, ProtocolPropertyName);
-            //        negotiationMessage = new NegotiationMessage(protocol);
-            //    }
-            //}
-            //return true;
+                    var negotiationJObject = (JObject)token;
+                    var protocol = JsonUtils.GetRequiredProperty<string>(negotiationJObject, ProtocolPropertyName);
+                    negotiationMessage = new NegotiationMessage(protocol);
+                }
+            }
+            return true;
         }
 
         public static bool TryParseMessage(ref ReadOnlySequence<byte> buffer, out NegotiationMessage negotiationMessage)

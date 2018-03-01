@@ -34,7 +34,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Formatters
             output.Advance(lenNumBytes);
         }
 
-        public static bool TryParseMessage(ref ReadOnlyBuffer<byte> buffer, out ReadOnlyBuffer<byte> payload)
+        public static bool TrySliceMessage(ref ReadOnlyBuffer<byte> buffer, out ReadOnlyBuffer<byte> payload)
         {
             payload = default;
 
