@@ -33,22 +33,12 @@ namespace Microsoft.AspNetCore.SignalR.Internal
 
         public bool ReadMessages(byte[] input, IInvocationBinder binder, out IList<HubMessage> messages)
         {
-            messages = new List<HubMessage>();
-            ReadOnlySpan<byte> span = input;
-            while (span.Length > 0 && _dataEncoder.TryDecode(ref span, out var data))
-            {
-                _hubProtocol.TryParseMessages(data, binder, messages);
-            }
-            return messages.Count > 0;
+            throw new NotImplementedException();
         }
 
         public byte[] WriteMessage(HubMessage hubMessage)
         {
-            using (var ms = new MemoryStream())
-            {
-                _hubProtocol.WriteMessage(hubMessage, ms);
-                return _dataEncoder.Encode(ms.ToArray());
-            }
+            throw new NotImplementedException();
         }
 
         public override bool Equals(object obj)

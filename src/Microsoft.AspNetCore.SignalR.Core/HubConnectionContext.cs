@@ -148,14 +148,12 @@ namespace Microsoft.AspNetCore.SignalR
                     {
                         var result = await _connectionContext.Transport.Input.ReadAsync(cts.Token);
                         var buffer = result.Buffer;
-                        var consumed = buffer.End;
-                        var examined = buffer.End;
 
                         try
                         {
                             if (!buffer.IsEmpty)
                             {
-                                if (NegotiationProtocol.TryParseMessage(buffer, out var negotiationMessage, out consumed, out examined))
+                                if (NegotiationProtocol.TryParseMessage(ref buffer, out var negotiationMessage))
                                 {
                                     var protocol = protocolResolver.GetProtocol(negotiationMessage.Protocol, this);
 
@@ -197,7 +195,8 @@ namespace Microsoft.AspNetCore.SignalR
                         }
                         finally
                         {
-                            _connectionContext.Transport.Input.AdvanceTo(consumed, examined);
+                            // Wherever the buffer ended up is our [consumed, examined] interval, because TryParseMessage sliced out it needed (if it worked).
+                            _connectionContext.Transport.Input.AdvanceTo(buffer.Start, buffer.End);
                         }
                     }
                 }
