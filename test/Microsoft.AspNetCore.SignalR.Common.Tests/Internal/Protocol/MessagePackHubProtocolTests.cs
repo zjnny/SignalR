@@ -13,6 +13,9 @@ using Xunit;
 
 namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
 {
+    using System.Buffers;
+    using System.IO.Pipelines;
+    using System.Threading.Tasks;
     using static HubMessageHelpers;
     using static MessagePackHelpers;
 
@@ -274,7 +277,7 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
 
         [Theory]
         [MemberData(nameof(TestDataNames))]
-        public void ParseMessages(string testDataName)
+        public async Task ParseMessages(string testDataName)
         {
             var testData = TestData[testDataName];
 
@@ -284,27 +287,28 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
             Assert.Equal(testData.Encoded, obj);
 
             // Parse the input fully now.
-            bytes = Frame(bytes);
+            var buffer = await FrameAsync(bytes);
             var protocol = new MessagePackHubProtocol();
             var messages = new List<HubMessage>();
-            Assert.True(protocol.TryParseMessages(bytes, new TestBinder(testData.Message), messages));
+            Assert.True(protocol.TryParseMessage(ref buffer, new TestBinder(testData.Message), out var message));
 
-            Assert.Single(messages);
-            Assert.Equal(testData.Message, messages[0], TestHubMessageEqualityComparer.Instance);
+            Assert.Equal(testData.Message, message, TestHubMessageEqualityComparer.Instance);
         }
 
         [Theory]
         [MemberData(nameof(TestDataNames))]
-        public void WriteMessages(string testDataName)
+        public async Task WriteMessages(string testDataName)
         {
             var testData = TestData[testDataName];
 
-            var bytes = Write(testData.Message);
-            AssertMessages(testData.Encoded, bytes);
+            var bytes = await WriteAsync(testData.Message);
+
+            // Copy the ref so we don't the main one forward, we need another for the binary encoding test.
+            var messageBuffer = bytes;
+            AssertMessages(testData.Encoded, ref messageBuffer);
 
             // Unframe the message to check the binary encoding
-            var byteSpan = bytes.AsReadOnlySpan();
-            Assert.True(BinaryMessageParser.TryParseMessage(ref byteSpan, out var unframed));
+            Assert.True(BinaryMessageFormat.TryParseMessage(ref bytes, out var unframed));
 
             // Check the baseline binary encoding, use Assert.True in order to configure the error message
             var actual = Convert.ToBase64String(unframed.ToArray());
@@ -355,12 +359,11 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
 
         [Theory]
         [MemberData(nameof(InvalidPayloads))]
-        public void ParserThrowsForInvalidMessages(InvalidMessageData testData)
+        public async Task ParserThrowsForInvalidMessages(InvalidMessageData testData)
         {
-            var buffer = Frame(Pack(testData.Encoded));
+            var buffer = await FrameAsync(Pack(testData.Encoded));
             var binder = new TestBinder(new[] { typeof(string) }, typeof(string));
-            var messages = new List<HubMessage>();
-            var exception = Assert.Throws<FormatException>(() => _hubProtocol.TryParseMessages(buffer, binder, messages));
+            var exception = Assert.Throws<FormatException>(() => _hubProtocol.TryParseMessage(ref buffer, binder, out _));
 
             Assert.Equal(testData.ErrorMessage, exception.Message);
         }
@@ -384,50 +387,53 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
 
         [Theory]
         [MemberData(nameof(ArgumentBindingErrors))]
-        public void GettingArgumentsThrowsIfBindingFailed(InvalidMessageData testData)
+        public async Task GettingArgumentsThrowsIfBindingFailed(InvalidMessageData testData)
         {
-            var buffer = Frame(Pack(testData.Encoded));
+            var buffer = await FrameAsync(Pack(testData.Encoded));
             var binder = new TestBinder(new[] { typeof(string) }, typeof(string));
             var messages = new List<HubMessage>();
-            _hubProtocol.TryParseMessages(buffer, binder, messages);
-            var exception = Assert.Throws<FormatException>(() => ((HubMethodInvocationMessage)messages[0]).Arguments);
+            _hubProtocol.TryParseMessage(ref buffer, binder, out var message);
+            var exception = Assert.Throws<FormatException>(() => ((HubMethodInvocationMessage)message).Arguments);
 
             Assert.Equal(testData.ErrorMessage, exception.Message);
         }
 
         [Theory]
-        [InlineData(new object[] { new byte[] { 0x05, 0x01 }, 0 })]
-        public void ParserDoesNotConsumePartialData(byte[] payload, int expectedMessagesCount)
+        [InlineData(new object[] { new byte[] { 0x05, 0x01 } })]
+        public void ParserDoesNotConsumePartialData(byte[] payload)
         {
             var binder = new TestBinder(new[] { typeof(string) }, typeof(string));
             var messages = new List<HubMessage>();
-            var result = _hubProtocol.TryParseMessages(payload, binder, messages);
-            Assert.True(result || messages.Count == 0);
-            Assert.Equal(expectedMessagesCount, messages.Count);
+            var buffer = new ReadOnlyBuffer<byte>(payload);
+            var oldLength = buffer.Length;
+            Assert.False(_hubProtocol.TryParseMessage(ref buffer, binder, out _));
+            Assert.Equal(oldLength, buffer.Length);
         }
 
         [Fact]
-        public void SerializerCanSerializeTypesWithNoDefaultCtor()
+        public async Task SerializerCanSerializeTypesWithNoDefaultCtor()
         {
-            var result = Write(CompletionMessage.WithResult("0", new List<int> { 42 }.AsReadOnly()));
-            AssertMessages(Array(HubProtocolConstants.CompletionMessageType, Map(), "0", 3, Array(42)), result);
+            var result = await WriteAsync(CompletionMessage.WithResult("0", new List<int> { 42 }.AsReadOnly()));
+            AssertMessages(Array(HubProtocolConstants.CompletionMessageType, Map(), "0", 3, Array(42)), ref result);
         }
 
-        private static void AssertMessages(MessagePackObject expectedOutput, ReadOnlySpan<byte> bytes)
+        private static void AssertMessages(MessagePackObject expectedOutput, ref ReadOnlyBuffer<byte> bytes)
         {
-            Assert.True(BinaryMessageParser.TryParseMessage(ref bytes, out var message));
+            Assert.True(BinaryMessageFormat.TryParseMessage(ref bytes, out var message));
             var obj = Unpack(message.ToArray());
             Assert.Equal(expectedOutput, obj);
         }
 
-        private static byte[] Frame(byte[] input)
+        private static async Task<ReadOnlyBuffer<byte>> FrameAsync(byte[] input)
         {
-            using (var stream = new MemoryStream())
-            {
-                BinaryMessageFormatter.WriteLengthPrefix(input.Length, stream);
-                stream.Write(input, 0, input.Length);
-                return stream.ToArray();
-            }
+            var pipe = new Pipe();
+            BinaryMessageFormat.WriteLengthPrefix(input.Length, pipe.Writer);
+            pipe.Writer.Write(input);
+            await pipe.Writer.FlushAsync();
+
+            var result = await pipe.Reader.ReadAsync();
+            Assert.True(result.IsCompleted);
+            return result.Buffer;
         }
 
         private static MessagePackObject Unpack(byte[] input)
@@ -461,15 +467,18 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
             }
         }
 
-        private static byte[] Write(HubMessage message)
+        private static async Task<ReadOnlyBuffer<byte>> WriteAsync(HubMessage message)
         {
             var protocol = new MessagePackHubProtocol();
-            using (var stream = new MemoryStream())
-            {
-                protocol.WriteMessage(message, stream);
-                stream.Flush();
-                return stream.ToArray();
-            }
+
+            var pipe = new Pipe();
+            protocol.WriteMessage(pipe.Writer, message);
+            await pipe.Writer.FlushAsync();
+            pipe.Writer.Complete();
+
+            var result = await pipe.Reader.ReadAsync();
+            Assert.True(result.IsCompleted);
+            return result.Buffer;
         }
 
         public class InvalidMessageData

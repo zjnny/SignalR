@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.ExceptionServices;
@@ -35,18 +36,49 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
             SerializationContext = options.Value.SerializationContext;
         }
 
-        public bool TryParseMessages(ReadOnlySpan<byte> input, IInvocationBinder binder, IList<HubMessage> messages)
+        public bool TryParseMessage(ref ReadOnlyBuffer<byte> input, IInvocationBinder binder, out HubMessage message)
         {
-            while (BinaryMessageParser.TryParseMessage(ref input, out var payload))
-            {
-                using (var memoryStream = new MemoryStream(payload.ToArray()))
-                {
-                    messages.Add(ParseMessage(memoryStream, binder));
-                }
-            }
-
-            return messages.Count > 0;
+            throw new NotImplementedException();
         }
+
+        public void WriteMessage(IOutput output, HubMessage message)
+        {
+            throw new NotImplementedException();
+        }
+
+        //public bool TryParseMessages(ReadOnlySpan<byte> input, IInvocationBinder binder, IList<HubMessage> messages)
+        //{
+        //    while (BinaryMessageParser.TryParseMessage(ref input, out var payload))
+        //    {
+        //        using (var memoryStream = new MemoryStream(payload.ToArray()))
+        //        {
+        //            messages.Add(ParseMessage(memoryStream, binder));
+        //        }
+        //    }
+
+        //    return messages.Count > 0;
+        //}
+
+        //public void WriteMessage(HubMessage message, Stream output)
+        //{
+        //    // We're writing data into the memoryStream so that we can get the length prefix
+        //    using (var memoryStream = new MemoryStream())
+        //    {
+        //        WriteMessageCore(message, memoryStream);
+        //        if (memoryStream.TryGetBuffer(out var buffer))
+        //        {
+        //            // Write the buffer directly
+        //            BinaryMessageFormatter.WriteLengthPrefix(buffer.Count, output);
+        //            output.Write(buffer.Array, buffer.Offset, buffer.Count);
+        //        }
+        //        else
+        //        {
+        //            BinaryMessageFormatter.WriteLengthPrefix(memoryStream.Length, output);
+        //            memoryStream.Position = 0;
+        //            memoryStream.CopyTo(output);
+        //        }
+        //    }
+        //}
 
         private static HubMessage ParseMessage(Stream input, IInvocationBinder binder)
         {
@@ -225,27 +257,6 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
             }
 
             return destination;
-        }
-
-        public void WriteMessage(HubMessage message, Stream output)
-        {
-            // We're writing data into the memoryStream so that we can get the length prefix
-            using (var memoryStream = new MemoryStream())
-            {
-                WriteMessageCore(message, memoryStream);
-                if (memoryStream.TryGetBuffer(out var buffer))
-                {
-                    // Write the buffer directly
-                    BinaryMessageFormatter.WriteLengthPrefix(buffer.Count, output);
-                    output.Write(buffer.Array, buffer.Offset, buffer.Count);
-                }
-                else
-                {
-                    BinaryMessageFormatter.WriteLengthPrefix(memoryStream.Length, output);
-                    memoryStream.Position = 0;
-                    memoryStream.CopyTo(output);
-                }
-            }
         }
 
         private void WriteMessageCore(HubMessage message, Stream output)

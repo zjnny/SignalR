@@ -14,6 +14,9 @@ using Xunit;
 
 namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
 {
+    using System.Buffers;
+    using System.IO.Pipelines;
+    using System.Threading.Tasks;
     using static HubMessageHelpers;
 
     public class JsonHubProtocolTests
@@ -84,9 +87,9 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
 
         [Theory]
         [MemberData(nameof(ProtocolTestData))]
-        public void WriteMessage(HubMessage message, bool camelCase, NullValueHandling nullValueHandling, string expectedOutput)
+        public async Task WriteMessage(HubMessage message, bool camelCase, NullValueHandling nullValueHandling, string expectedOutput)
         {
-            expectedOutput = Frame(expectedOutput);
+            expectedOutput = expectedOutput + (char)TextMessageFormat.RecordSeparator;
 
             var protocolOptions = new JsonHubProtocolOptions
             {
@@ -99,20 +102,19 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
 
             var protocol = new JsonHubProtocol(Options.Create(protocolOptions));
 
-            using (var ms = new MemoryStream())
-            {
-                protocol.WriteMessage(message, ms);
-                var json = Encoding.UTF8.GetString(ms.ToArray());
+            var pipe = new Pipe();
+            protocol.WriteMessage(pipe.Writer, message);
+            await pipe.Writer.FlushAsync();
 
-                Assert.Equal(expectedOutput, json);
-            }
+            var json = Encoding.UTF8.GetString(await pipe.Reader.ReadAllAsync());
+            Assert.Equal(expectedOutput, json);
         }
 
         [Theory]
         [MemberData(nameof(ProtocolTestData))]
         public void ParseMessage(HubMessage expectedMessage, bool camelCase, NullValueHandling nullValueHandling, string input)
         {
-            input = Frame(input);
+            input = input + (char)TextMessageFormat.RecordSeparator;
 
             var protocolOptions = new JsonHubProtocolOptions
             {
@@ -125,10 +127,10 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
 
             var binder = new TestBinder(expectedMessage);
             var protocol = new JsonHubProtocol(Options.Create(protocolOptions));
-            var messages = new List<HubMessage>();
-            protocol.TryParseMessages(Encoding.UTF8.GetBytes(input), binder, messages);
+            var buffer = new ReadOnlyBuffer<byte>(Encoding.UTF8.GetBytes(input));
 
-            Assert.Equal(expectedMessage, messages[0], TestHubMessageEqualityComparer.Instance);
+            Assert.True(protocol.TryParseMessage(ref buffer, binder, out var message));
+            Assert.Equal(expectedMessage, message, TestHubMessageEqualityComparer.Instance);
         }
 
         [Theory]
@@ -171,12 +173,13 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
         [InlineData("{'type':3,'invocationId':'42','error':'foo','result':true}", "The 'error' and 'result' properties are mutually exclusive.")]
         public void InvalidMessages(string input, string expectedMessage)
         {
-            input = Frame(input);
+            input = input + (char)TextMessageFormat.RecordSeparator;
 
             var binder = new TestBinder(Array.Empty<Type>(), typeof(object));
             var protocol = new JsonHubProtocol();
             var messages = new List<HubMessage>();
-            var ex = Assert.Throws<InvalidDataException>(() => protocol.TryParseMessages(Encoding.UTF8.GetBytes(input), binder, messages));
+            var buffer = new ReadOnlyBuffer<byte>(Encoding.UTF8.GetBytes(input));
+            var ex = Assert.Throws<InvalidDataException>(() => protocol.TryParseMessage(ref buffer, binder, out _));
             Assert.Equal(expectedMessage, ex.Message);
         }
 
@@ -187,28 +190,15 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
         [InlineData("{'type':4,'invocationId':'42','target':'foo','arguments':[ 'abc', 'xyz']}", "Error binding arguments. Make sure that the types of the provided values match the types of the hub method being invoked.")]
         public void ArgumentBindingErrors(string input, string expectedMessage)
         {
-            input = Frame(input);
+            input = input + (char)TextMessageFormat.RecordSeparator;
 
             var binder = new TestBinder(paramTypes: new[] { typeof(int), typeof(string) }, returnType: typeof(bool));
             var protocol = new JsonHubProtocol();
             var messages = new List<HubMessage>();
-            protocol.TryParseMessages(Encoding.UTF8.GetBytes(input), binder, messages);
-            var ex = Assert.Throws<InvalidDataException>(() => ((HubMethodInvocationMessage)messages[0]).Arguments);
+            var buffer = new ReadOnlyBuffer<byte>(Encoding.UTF8.GetBytes(input));
+            protocol.TryParseMessage(ref buffer, binder, out var message);
+            var ex = Assert.Throws<InvalidDataException>(() => ((HubMethodInvocationMessage)message).Arguments);
             Assert.Equal(expectedMessage, ex.Message);
-        }
-
-        private static string Frame(string input)
-        {
-            var data = Encoding.UTF8.GetBytes(input);
-            return Encoding.UTF8.GetString(FormatMessageToArray(data));
-        }
-
-        private static byte[] FormatMessageToArray(byte[] message)
-        {
-            var output = new MemoryStream();
-            output.Write(message, 0, message.Length);
-            TextMessageFormatter.WriteRecordSeparator(output);
-            return output.ToArray();
         }
     }
 }
