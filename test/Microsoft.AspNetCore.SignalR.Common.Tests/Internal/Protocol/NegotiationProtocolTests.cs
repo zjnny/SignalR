@@ -1,28 +1,39 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Buffers;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR.Internal.Protocol;
+using Microsoft.AspNetCore.SignalR.Tests;
 using Xunit;
 
 namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
 {
     public class NegotiationProtocolTests
     {
-        [Fact]
-        public void CanRoundtripNegotiation()
+        [Theory]
+        [InlineData("{ \"protocol\": \"json\" }\u001e", "json")]
+        [InlineData("{ \"protocol\": \"messagepack\" }\u001e", "messagepack")]
+        public async Task CanWriteNegotiation(string expectedJson, string protocol)
         {
-            var negotiationMessage = new NegotiationMessage(protocol: "dummy");
-            using (var ms = new MemoryStream())
-            {
-                NegotiationProtocol.WriteMessage(negotiationMessage, ms);
-                Assert.True(NegotiationProtocol.TryParseMessage(ms.ToArray(), out var deserializedMessage));
+            var message = new NegotiationMessage(protocol);
+            var bytes = await MemoryOutput.GetOutputAsArrayAsync(output => NegotiationProtocol.WriteMessage(message, output));
+            Assert.Equal(expectedJson, Encoding.UTF8.GetString(bytes));
+        }
 
-                Assert.NotNull(deserializedMessage);
-                Assert.Equal(negotiationMessage.Protocol, deserializedMessage.Protocol);
-            }
+        [Theory]
+        [InlineData("{ \"protocol\": \"json\" }\u001e", "json")]
+        [InlineData("{ \"protocol\": \"messagepack\" }\u001e", "messagepack")]
+        public void CanParseNegotiation(string json, string expectedProtocol)
+        {
+            var buffer = new ReadOnlyBuffer<byte>(Encoding.UTF8.GetBytes(json));
+            Assert.True(NegotiationProtocol.TryParseMessage(ref buffer, out var deserializedMessage));
+
+            Assert.NotNull(deserializedMessage);
+            Assert.Equal(expectedProtocol, deserializedMessage.Protocol);
         }
 
         [Theory]
@@ -34,10 +45,10 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
         [InlineData("[]\u001e", "Unexpected JSON Token Type 'Array'. Expected a JSON Object.")]
         public void ParsingNegotiationMessageThrowsForInvalidMessages(string payload, string expectedMessage)
         {
-            var message = Encoding.UTF8.GetBytes(payload);
+            var message = new ReadOnlyBuffer<byte>(Encoding.UTF8.GetBytes(payload));
 
             var exception = Assert.Throws<InvalidDataException>(() =>
-                Assert.True(NegotiationProtocol.TryParseMessage(message, out var deserializedMessage)));
+                Assert.True(NegotiationProtocol.TryParseMessage(ref message, out var deserializedMessage)));
 
             Assert.Equal(expectedMessage, exception.Message);
         }

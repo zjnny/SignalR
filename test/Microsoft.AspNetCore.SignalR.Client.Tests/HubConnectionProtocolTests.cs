@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR.Internal.Protocol;
+using Microsoft.AspNetCore.SignalR.Tests;
 using Microsoft.AspNetCore.Sockets;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
@@ -369,17 +370,17 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                 await hubConnection.StartAsync().OrTimeout();
                 hubConnection.On<int>("MyMethod", result => invocationTcs.SetResult(result));
 
-                using (var ms = new MemoryStream())
+                var encodedMessage = await MemoryOutput.GetOutputAsArrayAsync(output =>
                 {
                     new MessagePackHubProtocol()
-                        .WriteMessage(new InvocationMessage(null, "MyMethod", null, 42), ms);
+                        .WriteMessage(output, new InvocationMessage(null, "MyMethod", null, 42));
+                });
 
-                    var invokeMessage = Convert.ToBase64String(ms.ToArray());
-                    var payloadSize = invokeMessage.Length.ToString(CultureInfo.InvariantCulture);
-                    var message = $"{payloadSize}:{invokeMessage};";
+                var invokeMessage = Convert.ToBase64String(encodedMessage);
+                var payloadSize = invokeMessage.Length.ToString(CultureInfo.InvariantCulture);
+                var message = $"{payloadSize}:{invokeMessage};";
 
-                    connection.ReceivedMessages.TryWrite(Encoding.UTF8.GetBytes(message));
-                }
+                connection.ReceivedMessages.TryWrite(Encoding.UTF8.GetBytes(message));
 
                 Assert.Equal(42, await invocationTcs.Task.OrTimeout());
             }

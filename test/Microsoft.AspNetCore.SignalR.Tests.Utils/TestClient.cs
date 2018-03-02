@@ -20,8 +20,10 @@ namespace Microsoft.AspNetCore.SignalR.Tests
         private static int _id;
         private readonly HubProtocolReaderWriter _protocolReaderWriter;
         private readonly IInvocationBinder _invocationBinder;
+        private readonly IHubProtocol _protocol;
         private CancellationTokenSource _cts;
         private Queue<HubMessage> _messages = new Queue<HubMessage>();
+        private bool _connected;
 
         public DefaultConnectionContext Connection { get; }
         public Task Connected => ((TaskCompletionSource<bool>)Connection.Metadata["ConnectedTask"]).Task;
@@ -42,22 +44,37 @@ namespace Microsoft.AspNetCore.SignalR.Tests
             Connection.User = new ClaimsPrincipal(new ClaimsIdentity(claims));
             Connection.Metadata["ConnectedTask"] = new TaskCompletionSource<bool>();
 
-            protocol = protocol ?? new JsonHubProtocol();
             dataEncoder = dataEncoder ?? new PassThroughEncoder();
+            _protocol = protocol ?? new JsonHubProtocol();
             _protocolReaderWriter = new HubProtocolReaderWriter(protocol, dataEncoder);
             _invocationBinder = invocationBinder ?? new DefaultInvocationBinder();
 
             _cts = new CancellationTokenSource();
+        }
 
-            using (var memoryStream = new MemoryStream())
+        public async Task ConnectAsync()
+        {
+            var pipe = new Pipe();
+            try
             {
-                NegotiationProtocol.WriteMessage(new NegotiationMessage(protocol.Name), memoryStream);
-                Connection.Application.Output.WriteAsync(memoryStream.ToArray());
+                NegotiationProtocol.WriteMessage(new NegotiationMessage(_protocol.Name), pipe.Writer);
+                await pipe.Writer.FlushAsync();
+                pipe.Writer.Complete();
+
+                await Connection.Application.Output.WriteAsync(await pipe.Reader.ReadAllAsync());
             }
+            finally
+            {
+                pipe.Writer.Complete();
+                pipe.Reader.Complete();
+            }
+
+            _connected = true;
         }
 
         public async Task<IList<HubMessage>> StreamAsync(string methodName, params object[] args)
         {
+            EnsureConnected();
             var invocationId = await SendStreamInvocationAsync(methodName, args);
 
             var messages = new List<HubMessage>();
@@ -91,6 +108,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
 
         public async Task<CompletionMessage> InvokeAsync(string methodName, params object[] args)
         {
+            EnsureConnected();
             var invocationId = await SendInvocationAsync(methodName, nonBlocking: false, args: args);
 
             while (true)
@@ -124,11 +142,13 @@ namespace Microsoft.AspNetCore.SignalR.Tests
 
         public Task<string> SendInvocationAsync(string methodName, params object[] args)
         {
+            EnsureConnected();
             return SendInvocationAsync(methodName, nonBlocking: false, args: args);
         }
 
         public Task<string> SendInvocationAsync(string methodName, bool nonBlocking, params object[] args)
         {
+            EnsureConnected();
             var invocationId = nonBlocking ? null : GetInvocationId();
             return SendHubMessageAsync(new InvocationMessage(invocationId, methodName,
                 argumentBindingException: null, arguments: args));
@@ -136,6 +156,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
 
         public Task<string> SendStreamInvocationAsync(string methodName, params object[] args)
         {
+            EnsureConnected();
             var invocationId = GetInvocationId();
             return SendHubMessageAsync(new StreamInvocationMessage(invocationId, methodName,
                 argumentBindingException: null, arguments: args));
@@ -143,13 +164,15 @@ namespace Microsoft.AspNetCore.SignalR.Tests
 
         public async Task<string> SendHubMessageAsync(HubMessage message)
         {
-            var payload = _protocolReaderWriter.WriteMessage(message);
+            EnsureConnected();
+            var payload = _protocolReaderWriter.WriteMessage(hubMessage: message);
             await Connection.Application.Output.WriteAsync(payload);
             return message is HubInvocationMessage hubMessage ? hubMessage.InvocationId : null;
         }
 
         public async Task<HubMessage> ReadAsync()
         {
+            EnsureConnected();
             while (true)
             {
                 var message = TryRead();
@@ -185,6 +208,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
 
         public HubMessage TryRead()
         {
+            EnsureConnected();
             if (_messages.Count > 0)
             {
                 return _messages.Dequeue();
@@ -224,6 +248,14 @@ namespace Microsoft.AspNetCore.SignalR.Tests
             _cts.Cancel();
 
             Connection.Application.Output.Complete();
+        }
+
+        private void EnsureConnected()
+        {
+            if (!_connected)
+            {
+                throw new InvalidOperationException("Cannot perform this action, the client is not connected.");
+            }
         }
 
         private static string GetInvocationId()

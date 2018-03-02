@@ -2,12 +2,14 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.SignalR.Internal;
 using Microsoft.AspNetCore.SignalR.Internal.Protocol;
+using Microsoft.AspNetCore.Sockets;
 using Microsoft.AspNetCore.Sockets.Client;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -249,9 +251,9 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
 
             public string Name => "MockHubProtocol";
 
-            public ProtocolType Type => ProtocolType.Binary;
+            public TransferMode TransferMode => TransferMode.Binary;
 
-            public bool TryParseMessages(ReadOnlySpan<byte> input, IInvocationBinder binder, IList<HubMessage> messages)
+            public bool TryParseMessage(ref ReadOnlyBuffer<byte> input, IInvocationBinder binder, out HubMessage message)
             {
                 ParseCalls += 1;
                 if (_error != null)
@@ -260,14 +262,14 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
                 }
                 if (_parsed != null)
                 {
-                    messages.Add(_parsed);
+                    message = _parsed;
                     return true;
                 }
 
                 throw new InvalidOperationException("No Parsed Message provided");
             }
 
-            public void WriteMessage(HubMessage message, Stream output)
+            public void WriteMessage(IOutput output, HubMessage message)
             {
                 WriteCalls += 1;
 

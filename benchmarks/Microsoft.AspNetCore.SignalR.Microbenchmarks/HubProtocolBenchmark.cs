@@ -67,7 +67,7 @@ namespace Microsoft.AspNetCore.SignalR.Microbenchmarks
         [Benchmark]
         public void WriteSingleMessage()
         {
-            if (_hubProtocolReaderWriter.WriteMessage(_hubMessage).Length != _binaryInput.Length)
+            if (_hubProtocolReaderWriter.WriteMessage(hubMessage: _hubMessage).Length != _binaryInput.Length)
             {
                 throw new InvalidOperationException("Failed to write message");
             }
@@ -89,7 +89,7 @@ namespace Microsoft.AspNetCore.SignalR.Microbenchmarks
 
         private byte[] GetBytes(HubMessage hubMessage)
         {
-            return _hubProtocolReaderWriter.WriteMessage(_hubMessage);
+            return _hubProtocolReaderWriter.WriteMessage(hubMessage: _hubMessage);
         }
     }
 }

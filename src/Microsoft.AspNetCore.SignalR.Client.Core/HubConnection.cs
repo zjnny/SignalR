@@ -19,6 +19,8 @@ using Microsoft.AspNetCore.Sockets.Features;
 using Microsoft.AspNetCore.Sockets.Internal;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.IO.Pipelines;
+using System.Buffers;
 
 namespace Microsoft.AspNetCore.SignalR.Client
 {
@@ -31,7 +33,6 @@ namespace Microsoft.AspNetCore.SignalR.Client
         private readonly IConnection _connection;
         private readonly IHubProtocol _protocol;
         private readonly HubBinder _binder;
-        private HubProtocolReaderWriter _protocolReaderWriter;
 
         private readonly object _pendingCallsLock = new object();
         private readonly Dictionary<string, InvocationRequest> _pendingCalls = new Dictionary<string, InvocationRequest>();
@@ -121,43 +122,43 @@ namespace Microsoft.AspNetCore.SignalR.Client
                 _connection.Features.Set(transferModeFeature);
             }
 
-            var requestedTransferMode =
-                _protocol.Type == ProtocolType.Binary
-                    ? TransferMode.Binary
-                    : TransferMode.Text;
+            var transportFeature = _connection.Features.Get<IConnectionTransportFeature>();
+            if (transportFeature == null)
+            {
+                throw new InvalidOperationException("Unable to determine transfer modes supported by the transport");
+            }
 
-            transferModeFeature.TransferMode = requestedTransferMode;
+            if ((transportFeature.TransportCapabilities & _protocol.TransferMode) == 0)
+            {
+                throw new InvalidOperationException($"Cannot use '{_protocol.Name}' protocol. The current transport does not support the '{_protocol.TransferMode}' transfer mode required by the protocol");
+            }
+
+            transferModeFeature.TransferMode = _protocol.TransferMode;
+
             await _connection.StartAsync();
             _needKeepAlive = _connection.Features.Get<IConnectionInherentKeepAliveFeature>() == null;
 
             var actualTransferMode = transferModeFeature.TransferMode;
 
-            _protocolReaderWriter = new HubProtocolReaderWriter(_protocol, GetDataEncoder(requestedTransferMode, actualTransferMode));
-
             _logger.HubProtocol(_protocol.Name);
 
             _connectionActive = new CancellationTokenSource();
-            using (var memoryStream = new MemoryStream())
+            var pipe = new Pipe();
+            try
             {
-                NegotiationProtocol.WriteMessage(new NegotiationMessage(_protocol.Name), memoryStream);
-                await _connection.SendAsync(memoryStream.ToArray(), _connectionActive.Token);
+                NegotiationProtocol.WriteMessage(new NegotiationMessage(_protocol.Name), pipe.Writer);
+                await pipe.Writer.FlushAsync();
+                pipe.Writer.Complete();
+
+                await _connection.SendAsync(await ReadAllAsync(pipe.Reader), _connectionActive.Token);
+            }
+            finally
+            {
+                pipe.Writer.Complete();
+                pipe.Reader.Complete();
             }
 
             ResetTimeoutTimer();
-        }
-
-        private IDataEncoder GetDataEncoder(TransferMode requestedTransferMode, TransferMode actualTransferMode)
-        {
-            if (requestedTransferMode == TransferMode.Binary && actualTransferMode == TransferMode.Text)
-            {
-                // This is for instance for SSE which is a Text protocol and the user wants to use a binary
-                // protocol so we need to encode messages.
-                return new Base64Encoder();
-            }
-
-            Debug.Assert(requestedTransferMode == actualTransferMode, "All transports besides SSE are expected to support binary mode.");
-
-            return new PassThroughEncoder();
         }
 
         public async Task StopAsync() => await StopAsyncCore().ForceAsync();
@@ -295,7 +296,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
         {
             try
             {
-                var payload = _protocolReaderWriter.WriteMessage(hubMessage);
+                var payload = _protocol.WriteMessage(hubMessage: hubMessage);
                 _logger.SendInvocation(hubMessage.InvocationId);
 
                 await _connection.SendAsync(payload, irq.CancellationToken);
@@ -328,7 +329,7 @@ namespace Microsoft.AspNetCore.SignalR.Client
             {
                 _logger.PreparingNonBlockingInvocation(methodName, args.Length);
 
-                var payload = _protocolReaderWriter.WriteMessage(invocationMessage);
+                var payload = _protocol.WriteMessage(hubMessage: invocationMessage);
                 _logger.SendInvocation(invocationMessage.InvocationId);
 
                 await _connection.SendAsync(payload, cancellationToken);
@@ -344,43 +345,46 @@ namespace Microsoft.AspNetCore.SignalR.Client
         private async Task OnDataReceivedAsync(byte[] data)
         {
             ResetTimeoutTimer();
-            if (_protocolReaderWriter.ReadMessages(data, _binder, out var messages))
+            var buffer = new ReadOnlyBuffer<byte>(data);
+            while (_protocol.TryParseMessage(ref buffer, _binder, out var message))
             {
-                foreach (var message in messages)
+                InvocationRequest irq;
+                switch (message)
                 {
-                    InvocationRequest irq;
-                    switch (message)
-                    {
-                        case InvocationMessage invocation:
-                            _logger.ReceivedInvocation(invocation.InvocationId, invocation.Target,
-                                invocation.ArgumentBindingException != null ? null : invocation.Arguments);
-                            await DispatchInvocationAsync(invocation, _connectionActive.Token);
-                            break;
-                        case CompletionMessage completion:
-                            if (!TryRemoveInvocation(completion.InvocationId, out irq))
-                            {
-                                _logger.DropCompletionMessage(completion.InvocationId);
-                                return;
-                            }
-                            DispatchInvocationCompletion(completion, irq);
-                            irq.Dispose();
-                            break;
-                        case StreamItemMessage streamItem:
-                            // Complete the invocation with an error, we don't support streaming (yet)
-                            if (!TryGetInvocation(streamItem.InvocationId, out irq))
-                            {
-                                _logger.DropStreamMessage(streamItem.InvocationId);
-                                return;
-                            }
-                            DispatchInvocationStreamItemAsync(streamItem, irq);
-                            break;
-                        case PingMessage _:
-                            // Nothing to do on receipt of a ping.
-                            break;
-                        default:
-                            throw new InvalidOperationException($"Unexpected message type: {message.GetType().FullName}");
-                    }
+                    case InvocationMessage invocation:
+                        _logger.ReceivedInvocation(invocation.InvocationId, invocation.Target,
+                            invocation.ArgumentBindingException != null ? null : invocation.Arguments);
+                        await DispatchInvocationAsync(invocation, _connectionActive.Token);
+                        break;
+                    case CompletionMessage completion:
+                        if (!TryRemoveInvocation(completion.InvocationId, out irq))
+                        {
+                            _logger.DropCompletionMessage(completion.InvocationId);
+                            return;
+                        }
+                        DispatchInvocationCompletion(completion, irq);
+                        irq.Dispose();
+                        break;
+                    case StreamItemMessage streamItem:
+                        // Complete the invocation with an error, we don't support streaming (yet)
+                        if (!TryGetInvocation(streamItem.InvocationId, out irq))
+                        {
+                            _logger.DropStreamMessage(streamItem.InvocationId);
+                            return;
+                        }
+                        DispatchInvocationStreamItemAsync(streamItem, irq);
+                        break;
+                    case PingMessage _:
+                        // Nothing to do on receipt of a ping.
+                        break;
+                    default:
+                        throw new InvalidOperationException($"Unexpected message type: {message.GetType().FullName}");
                 }
+            }
+
+            if (buffer.Length > 0)
+            {
+                throw new InvalidDataException("Received an incomplete message from the server");
             }
         }
 
@@ -617,6 +621,28 @@ namespace Microsoft.AspNetCore.SignalR.Client
         private class TransferModeFeature : ITransferModeFeature
         {
             public TransferMode TransferMode { get; set; }
+        }
+
+        // TODO: Remove this. It's temporary
+        public static async Task<byte[]> ReadAllAsync(PipeReader pipeReader)
+        {
+            while (true)
+            {
+                var result = await pipeReader.ReadAsync();
+
+                try
+                {
+                    if (result.IsCompleted)
+                    {
+                        return result.Buffer.ToArray();
+                    }
+                }
+                finally
+                {
+                    // Consume nothing, just wait for everything
+                    pipeReader.AdvanceTo(result.Buffer.Start, result.Buffer.End);
+                }
+            }
         }
     }
 }

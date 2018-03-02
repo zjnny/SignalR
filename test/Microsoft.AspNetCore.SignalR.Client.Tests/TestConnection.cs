@@ -15,6 +15,8 @@ using Microsoft.AspNetCore.Sockets;
 using Microsoft.AspNetCore.Sockets.Client;
 using Microsoft.AspNetCore.Sockets.Features;
 using Newtonsoft.Json;
+using Microsoft.AspNetCore.SignalR.Tests;
+using System.Buffers;
 
 namespace Microsoft.AspNetCore.SignalR.Client.Tests
 {
@@ -104,20 +106,16 @@ namespace Microsoft.AspNetCore.SignalR.Client.Tests
             return Encoding.UTF8.GetString(message);
         }
 
-        public Task ReceiveJsonMessage(object jsonObject)
+        public async Task ReceiveJsonMessage(object jsonObject)
         {
             var json = JsonConvert.SerializeObject(jsonObject, Formatting.None);
-            var bytes = FormatMessageToArray(Encoding.UTF8.GetBytes(json));
+            var bytes = await MemoryOutput.GetOutputAsArrayAsync(output =>
+            {
+                output.Write(Encoding.UTF8.GetBytes(json));
+                TextMessageFormat.WriteRecordSeparator(output);
+            });
 
-            return _receivedMessages.Writer.WriteAsync(bytes);
-        }
-
-        private byte[] FormatMessageToArray(byte[] message)
-        {
-            var output = new MemoryStream();
-            output.Write(message, 0, message.Length);
-            TextMessageFormatter.WriteRecordSeparator(output);
-            return output.ToArray();
+            await _receivedMessages.Writer.WriteAsync(bytes);
         }
 
         private async Task ReceiveLoopAsync(CancellationToken token)

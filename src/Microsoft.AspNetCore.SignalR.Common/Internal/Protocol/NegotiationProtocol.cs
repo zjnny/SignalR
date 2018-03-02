@@ -18,28 +18,34 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
 
         private const string ProtocolPropertyName = "protocol";
 
-        public static void WriteMessage(NegotiationMessage negotiationMessage, Stream output)
+        public static void WriteMessage(NegotiationMessage negotiationMessage, IOutput output)
         {
             // TODO: Another place to use the IOutput stream wrapper
-            using (var writer = new JsonTextWriter(new StreamWriter(output, _utf8NoBom, 1024, leaveOpen: true)))
+            using (var ms = new MemoryStream())
             {
-                writer.WriteStartObject();
-                writer.WritePropertyName(ProtocolPropertyName);
-                writer.WriteValue(negotiationMessage.Protocol);
-                writer.WriteEndObject();
+                using (var writer = new JsonTextWriter(new StreamWriter(ms, _utf8NoBom, 1024, leaveOpen: true)))
+                {
+                    writer.WriteStartObject();
+                    writer.WritePropertyName(ProtocolPropertyName);
+                    writer.WriteValue(negotiationMessage.Protocol);
+                    writer.WriteEndObject();
+                }
+
+                ms.Flush();
+                output.Write(ms.GetBuffer().AsReadOnlySpan().Slice(0, (int)ms.Length));
             }
 
             // TODO: Replace with TextMessageFormat.WriteRecordSeparator
-            output.Write(new[] { (byte)TextMessageFormat.RecordSeparator }, 0, 1);
+            TextMessageFormat.WriteRecordSeparator(output);
         }
 
-        public static bool TryParseMessage(ReadOnlySpan<byte> input, out NegotiationMessage negotiationMessage)
+        public static bool TryParseMessage(ref ReadOnlyBuffer<byte> input, out NegotiationMessage negotiationMessage)
         {
-            // TODO: Gross gross gross.
             var buffer = new ReadOnlyBuffer<byte>(input.ToArray());
             if (!TextMessageFormat.TrySliceMessage(ref buffer, out var payload))
             {
-                throw new InvalidDataException("Unable to parse payload as a negotiation message.");
+                negotiationMessage = null;
+                return false;
             }
 
             using (var memoryStream = new MemoryStream(payload.ToArray()))
@@ -58,21 +64,6 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
                 }
             }
             return true;
-        }
-
-        public static bool TryParseMessage(ref ReadOnlyBuffer<byte> buffer, out NegotiationMessage negotiationMessage)
-        {
-            if(!TextMessageFormat.TrySliceMessage(ref buffer, out var message))
-            {
-                // Haven't seen the entire negotiate message so bail
-                negotiationMessage = null;
-                return false;
-            }
-            else
-            {
-                var memory = message.IsSingleSegment ? buffer.First : buffer.ToArray();
-                return TryParseMessage(memory.Span, out negotiationMessage);
-            }
         }
     }
 }

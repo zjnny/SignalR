@@ -1337,7 +1337,7 @@ namespace Microsoft.AspNetCore.SignalR.Tests
             {
                 var transportFeature = new Mock<IConnectionTransportFeature>();
                 transportFeature.SetupGet(f => f.TransportCapabilities)
-                    .Returns(protocol.Type == ProtocolType.Binary ? TransferMode.Binary : TransferMode.Text);
+                    .Returns(protocol.TransferMode);
                 client.Connection.Features.Set(transportFeature.Object);
 
                 var endPointLifetime = endPoint.OnConnectedAsync(client.Connection);
