@@ -10,7 +10,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Formatters
     {
         private const int MaxLengthPrefixSize = 5;
 
-        public static void WriteLengthPrefix(long length, IOutput output)
+        public static void WriteLengthPrefix(long length, Stream output)
         {
             // This code writes length prefix of the message as a VarInt. Read the comment in
             // the BinaryMessageParser.TryParseMessage for details.
@@ -102,7 +102,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Formatters
             length = 0;
             bytesRead = 0;
 
-            if(lengthSpan.Length == 0)
+            if (lengthSpan.Length == 0)
             {
                 return false;
             }
