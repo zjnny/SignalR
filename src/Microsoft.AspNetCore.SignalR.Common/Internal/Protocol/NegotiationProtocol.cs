@@ -18,51 +18,29 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
 
         private const string ProtocolPropertyName = "protocol";
 
-        public static void WriteMessage(NegotiationMessage negotiationMessage, Stream output)
+        public static void WriteMessage(NegotiationMessage negotiationMessage, IBufferWriter<byte> output)
         {
             // TODO: Another place to use the IOutput stream wrapper
-            using (var writer = new JsonTextWriter(new StreamWriter(output, _utf8NoBom, 1024, leaveOpen: true)))
+            using (var ms = new MemoryStream())
             {
-                writer.WriteStartObject();
-                writer.WritePropertyName(ProtocolPropertyName);
-                writer.WriteValue(negotiationMessage.Protocol);
-                writer.WriteEndObject();
-            }
-
-            // TODO: Replace with TextMessageFormat.WriteRecordSeparator
-            output.Write(new[] { (byte)TextMessageFormat.RecordSeparator }, 0, 1);
-        }
-
-        public static bool TryParseMessage(ReadOnlySpan<byte> input, out NegotiationMessage negotiationMessage)
-        {
-            // TODO: Gross gross gross.
-            var buffer = new ReadOnlyBuffer<byte>(input.ToArray());
-            if (!TextMessageFormat.TrySliceMessage(ref buffer, out var payload))
-            {
-                throw new InvalidDataException("Unable to parse payload as a negotiation message.");
-            }
-
-            using (var memoryStream = new MemoryStream(payload.ToArray()))
-            {
-                using (var reader = new JsonTextReader(new StreamReader(memoryStream)))
+                using (var writer = new JsonTextWriter(new StreamWriter(ms, _utf8NoBom, 1024, leaveOpen: true)))
                 {
-                    var token = JToken.ReadFrom(reader);
-                    if (token == null || token.Type != JTokenType.Object)
-                    {
-                        throw new InvalidDataException($"Unexpected JSON Token Type '{token?.Type}'. Expected a JSON Object.");
-                    }
-
-                    var negotiationJObject = (JObject)token;
-                    var protocol = JsonUtils.GetRequiredProperty<string>(negotiationJObject, ProtocolPropertyName);
-                    negotiationMessage = new NegotiationMessage(protocol);
+                    writer.WriteStartObject();
+                    writer.WritePropertyName(ProtocolPropertyName);
+                    writer.WriteValue(negotiationMessage.Protocol);
+                    writer.WriteEndObject();
                 }
+                ms.Flush();
+
+                output.Write(ms.GetBuffer().AsReadOnlySpan().Slice(0, (int)ms.Length));
             }
-            return true;
+
+            TextMessageFormat.WriteRecordSeparator(output);
         }
 
-        public static bool TryParseMessage(ref ReadOnlySequence<byte> buffer, out NegotiationMessage negotiationMessage)
+        public static bool TryParseMessage(ref ReadOnlySequence<byte> input, out NegotiationMessage negotiationMessage)
         {
-            if (!TextMessageFormat.TrySliceMessage(ref buffer, out var message))
+            if (!TextMessageFormat.TrySliceMessage(ref input, out var message))
             {
                 // Haven't seen the entire negotiate message so bail
                 negotiationMessage = null;
@@ -70,8 +48,22 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
             }
             else
             {
-                var memory = message.IsSingleSegment ? buffer.First : buffer.ToArray();
-                return TryParseMessage(memory.Span, out negotiationMessage);
+                using (var memoryStream = new MemoryStream(message.ToArray()))
+                {
+                    using (var reader = new JsonTextReader(new StreamReader(memoryStream)))
+                    {
+                        var token = JToken.ReadFrom(reader);
+                        if (token == null || token.Type != JTokenType.Object)
+                        {
+                            throw new InvalidDataException($"Unexpected JSON Token Type '{token?.Type}'. Expected a JSON Object.");
+                        }
+
+                        var negotiationJObject = (JObject)token;
+                        var protocol = JsonUtils.GetRequiredProperty<string>(negotiationJObject, ProtocolPropertyName);
+                        negotiationMessage = new NegotiationMessage(protocol);
+                    }
+                }
+                return true;
             }
         }
     }

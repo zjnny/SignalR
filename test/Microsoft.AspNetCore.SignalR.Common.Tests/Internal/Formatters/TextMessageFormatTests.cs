@@ -31,7 +31,7 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Formatters
         [Fact]
         public void ReadMessage()
         {
-            var buffer = new ReadOnlyBuffer<byte>(Encoding.UTF8.GetBytes("ABC\u001e"));
+            var buffer = new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes("ABC\u001e"));
 
             Assert.True(TextMessageFormat.TrySliceMessage(ref buffer, out var payload));
             Assert.Equal("ABC", Encoding.UTF8.GetString(payload.ToArray()));
@@ -41,7 +41,7 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Formatters
         [Fact]
         public void TryReadingIncompleteMessage()
         {
-            var buffer = new ReadOnlyBuffer<byte>(Encoding.UTF8.GetBytes("ABC"));
+            var buffer = new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes("ABC"));
             var oldStart = buffer.Start;
             Assert.False(TextMessageFormat.TrySliceMessage(ref buffer, out var payload));
             Assert.Equal(oldStart, buffer.Start);
@@ -50,7 +50,7 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Formatters
         [Fact]
         public void TryReadingMultipleMessages()
         {
-            var buffer = new ReadOnlyBuffer<byte>(Encoding.UTF8.GetBytes("ABC\u001eXYZ\u001e"));
+            var buffer = new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes("ABC\u001eXYZ\u001e"));
             Assert.True(TextMessageFormat.TrySliceMessage(ref buffer, out var payload));
             Assert.Equal("ABC", Encoding.UTF8.GetString(payload.ToArray()));
             Assert.True(TextMessageFormat.TrySliceMessage(ref buffer, out payload));
@@ -60,7 +60,7 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Formatters
         [Fact]
         public void IncompleteTrailingMessage()
         {
-            var buffer = new ReadOnlyBuffer<byte>(Encoding.UTF8.GetBytes("ABC\u001eXYZ\u001e123"));
+            var buffer = new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes("ABC\u001eXYZ\u001e123"));
             Assert.True(TextMessageFormat.TrySliceMessage(ref buffer, out var payload));
             Assert.Equal("ABC", Encoding.UTF8.GetString(payload.ToArray()));
             Assert.True(TextMessageFormat.TrySliceMessage(ref buffer, out payload));

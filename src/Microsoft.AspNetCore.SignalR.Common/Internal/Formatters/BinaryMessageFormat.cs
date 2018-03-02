@@ -10,7 +10,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Formatters
     {
         private const int MaxLengthPrefixSize = 5;
 
-        public static void WriteLengthPrefix(long length, Stream output)
+        public static void WriteLengthPrefix(long length, IBufferWriter<byte> output)
         {
             // This code writes length prefix of the message as a VarInt. Read the comment in
             // the BinaryMessageParser.TryParseMessage for details.
@@ -34,7 +34,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Formatters
             output.Advance(lenNumBytes);
         }
 
-        public static bool TrySliceMessage(ref ReadOnlyBuffer<byte> buffer, out ReadOnlyBuffer<byte> payload)
+        public static bool TrySliceMessage(ref ReadOnlySequence<byte> buffer, out ReadOnlySequence<byte> payload)
         {
             payload = default;
 

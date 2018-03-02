@@ -135,7 +135,7 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
 
             var binder = new TestBinder(testData.Message);
             var protocol = new JsonHubProtocol(Options.Create(protocolOptions));
-            var buffer = new ReadOnlyBuffer<byte>(Encoding.UTF8.GetBytes(input));
+            var buffer = new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(input));
 
             Assert.True(protocol.TryParseMessage(ref buffer, binder, out var message));
             Assert.Equal(testData.Message, message, TestHubMessageEqualityComparer.Instance);
@@ -186,7 +186,7 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
             var binder = new TestBinder(Array.Empty<Type>(), typeof(object));
             var protocol = new JsonHubProtocol();
             var messages = new List<HubMessage>();
-            var buffer = new ReadOnlyBuffer<byte>(Encoding.UTF8.GetBytes(input));
+            var buffer = new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(input));
             var ex = Assert.Throws<InvalidDataException>(() => protocol.TryParseMessage(ref buffer, binder, out _));
             Assert.Equal(expectedMessage, ex.Message);
         }
@@ -203,7 +203,7 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
             var binder = new TestBinder(paramTypes: new[] { typeof(int), typeof(string) }, returnType: typeof(bool));
             var protocol = new JsonHubProtocol();
             var messages = new List<HubMessage>();
-            var buffer = new ReadOnlyBuffer<byte>(Encoding.UTF8.GetBytes(input));
+            var buffer = new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(input));
             protocol.TryParseMessage(ref buffer, binder, out var message);
             var ex = Assert.Throws<InvalidDataException>(() => ((HubMethodInvocationMessage)message).Arguments);
             Assert.Equal(expectedMessage, ex.Message);

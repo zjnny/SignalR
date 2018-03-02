@@ -123,7 +123,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests.Internal.Formatters
         [InlineData(new byte[] { 0x0B, 0x41, 0x0A, 0x52, 0x0D, 0x43, 0x0D, 0x0A, 0x3B, 0x44, 0x45, 0x46 }, "A\nR\rC\r\n;DEF")]
         public void ReadMessage(byte[] encoded, string payload)
         {
-            var buffer = new ReadOnlyBuffer<byte>(encoded);
+            var buffer = new ReadOnlySequence<byte>(encoded);
             Assert.True(BinaryMessageFormat.TrySliceMessage(ref buffer, out var message));
             Assert.Equal(0, buffer.Length);
 
@@ -158,7 +158,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests.Internal.Formatters
             })]
         public void ReadBinaryMessage(byte[] encoded, byte[] payload)
         {
-            var buffer = new ReadOnlyBuffer<byte>(encoded);
+            var buffer = new ReadOnlySequence<byte>(encoded);
             Assert.True(BinaryMessageFormat.TrySliceMessage(ref buffer, out var message));
             Assert.Equal(0, buffer.Length);
             Assert.Equal(payload, message.ToArray());
@@ -170,7 +170,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests.Internal.Formatters
         [InlineData(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF })] // We shouldn't read the last byte!
         public void BinaryMessageFormatStopsReadingLengthAt2GB(byte[] payload)
         {
-            var buffer = new ReadOnlyBuffer<byte>(payload);
+            var buffer = new ReadOnlySequence<byte>(payload);
             var ex = Assert.Throws<FormatException>(() =>
             {
                 BinaryMessageFormat.TrySliceMessage(ref buffer, out var message);
@@ -185,7 +185,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests.Internal.Formatters
         [InlineData(new byte[] { 0x80 })] // size is cut
         public void BinaryMessageFormatReturnsFalseForPartialPayloads(byte[] payload)
         {
-            var buffer = new ReadOnlyBuffer<byte>(payload);
+            var buffer = new ReadOnlySequence<byte>(payload);
             var oldStart = buffer.Start;
             Assert.False(BinaryMessageFormat.TrySliceMessage(ref buffer, out var message));
             Assert.Equal(oldStart, buffer.Start);
@@ -202,7 +202,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests.Internal.Formatters
                     /* body: */ 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x0D, 0x0A, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
             };
 
-            var buffer = new ReadOnlyBuffer<byte>(encoded);
+            var buffer = new ReadOnlySequence<byte>(encoded);
             var messages = new List<byte[]>();
             while (BinaryMessageFormat.TrySliceMessage(ref buffer, out var message))
             {
@@ -221,7 +221,7 @@ namespace Microsoft.AspNetCore.Sockets.Tests.Internal.Formatters
         [InlineData(new byte[] { 0x09, 0x00, 0x00 })] // Not enough data for payload
         public void ReadIncompleteMessages(byte[] encoded)
         {
-            var buffer = new ReadOnlyBuffer<byte>(encoded);
+            var buffer = new ReadOnlySequence<byte>(encoded);
             Assert.False(BinaryMessageFormat.TrySliceMessage(ref buffer, out var message));
             Assert.Equal(encoded.Length, buffer.Length);
         }

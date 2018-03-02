@@ -10,7 +10,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
         string Name { get; }
         ProtocolType Type { get; }
 
-        bool TryParseMessage(ref ReadOnlyBuffer<byte> input, IInvocationBinder binder, out HubMessage message);
-        void WriteMessage(IOutput output, HubMessage message);
+        bool TryParseMessage(ref ReadOnlySequence<byte> input, IInvocationBinder binder, out HubMessage message);
+        void WriteMessage(IBufferWriter<byte> output, HubMessage message);
     }
 }

@@ -48,14 +48,13 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
 
         public ProtocolType Type => ProtocolType.Text;
 
-        public bool TryParseMessage(ref ReadOnlyBuffer<byte> input, IInvocationBinder binder, out HubMessage message)
+        public bool TryParseMessage(ref ReadOnlySequence<byte> input, IInvocationBinder binder, out HubMessage message)
         {
             if (TextMessageFormat.TrySliceMessage(ref input, out var payload))
             {
-                // TODO: Before submitting PR, build a stream over ReadOnlyBuffer
-                using (var ms = new MemoryStream(payload.ToArray()))
+                using (var stream = new ReadOnlySequenceStream(payload))
                 {
-                    message = ParseMessage(ms, binder);
+                    message = ParseMessage(stream, binder);
                 }
                 return true;
             }
@@ -66,7 +65,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
             }
         }
 
-        public void WriteMessage(IOutput output, HubMessage message)
+        public void WriteMessage(IBufferWriter<byte> output, HubMessage message)
         {
             // TODO: Before submitting PR, build a stream over IOutput
             using (var ms = new MemoryStream())

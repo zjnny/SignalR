@@ -404,7 +404,7 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
         {
             var binder = new TestBinder(new[] { typeof(string) }, typeof(string));
             var messages = new List<HubMessage>();
-            var buffer = new ReadOnlyBuffer<byte>(payload);
+            var buffer = new ReadOnlySequence<byte>(payload);
             var oldLength = buffer.Length;
             Assert.False(_hubProtocol.TryParseMessage(ref buffer, binder, out _));
             Assert.Equal(oldLength, buffer.Length);
@@ -417,14 +417,14 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
             AssertMessages(Array(HubProtocolConstants.CompletionMessageType, Map(), "0", 3, Array(42)), ref result);
         }
 
-        private static void AssertMessages(MessagePackObject expectedOutput, ref ReadOnlyBuffer<byte> bytes)
+        private static void AssertMessages(MessagePackObject expectedOutput, ref ReadOnlySequence<byte> bytes)
         {
             Assert.True(BinaryMessageFormat.TrySliceMessage(ref bytes, out var message));
             var obj = Unpack(message.ToArray());
             Assert.Equal(expectedOutput, obj);
         }
 
-        private static async Task<ReadOnlyBuffer<byte>> FrameAsync(byte[] input)
+        private static async Task<ReadOnlySequence<byte>> FrameAsync(byte[] input)
         {
             var pipe = new Pipe();
             BinaryMessageFormat.WriteLengthPrefix(input.Length, pipe.Writer);
@@ -468,7 +468,7 @@ namespace Microsoft.AspNetCore.SignalR.Common.Tests.Internal.Protocol
             }
         }
 
-        private static async Task<ReadOnlyBuffer<byte>> WriteAsync(HubMessage message)
+        private static async Task<ReadOnlySequence<byte>> WriteAsync(HubMessage message)
         {
             var protocol = new MessagePackHubProtocol();
 

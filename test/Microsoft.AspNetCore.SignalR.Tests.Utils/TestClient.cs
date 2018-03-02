@@ -49,11 +49,12 @@ namespace Microsoft.AspNetCore.SignalR.Tests
 
             _cts = new CancellationTokenSource();
 
-            using (var memoryStream = new MemoryStream())
-            {
-                NegotiationProtocol.WriteMessage(new NegotiationMessage(protocol.Name), memoryStream);
-                Connection.Application.Output.WriteAsync(memoryStream.ToArray());
-            }
+            throw new NotImplementedException();
+            //using (var memoryStream = new MemoryStream())
+            //{
+            //    NegotiationProtocol.WriteMessage(new NegotiationMessage(protocol.Name), memoryStream);
+            //    Connection.Application.Output.WriteAsync(memoryStream.ToArray());
+            //}
         }
 
         public async Task<IList<HubMessage>> StreamAsync(string methodName, params object[] args)

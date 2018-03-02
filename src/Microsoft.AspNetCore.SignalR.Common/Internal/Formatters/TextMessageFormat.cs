@@ -18,14 +18,14 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Formatters
         /// Tries to slice a message out of the buffer by scanning for the <see cref="RecordSeparator"/> character.
         /// </summary>
         /// <param name="buffer">The buffer from which to slice out the message. If a message is found, this buffer is sliced to start AFTER the record separator.</param>
-        /// <param name="message">If this method returns true, this is a <see cref="ReadOnlyBuffer{T}"/> containing the message</param>
+        /// <param name="message">If this method returns true, this is a <see cref="ReadOnlySequence{T}"/> containing the message</param>
         /// <returns>true if the record separator was found and a message was sliced, false if not (and the buffer has been left unchanged)</returns>
-        public static bool TrySliceMessage(ref ReadOnlyBuffer<byte> buffer, out ReadOnlyBuffer<byte> message)
+        public static bool TrySliceMessage(ref ReadOnlySequence<byte> buffer, out ReadOnlySequence<byte> message)
         {
             var pos = buffer.PositionOf(RecordSeparator);
-            if(pos == null)
+            if (pos == null)
             {
-                message = ReadOnlyBuffer<byte>.Empty;
+                message = default;
                 return false;
             }
             else
@@ -40,6 +40,6 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Formatters
         /// Writes the record separator to the provided buffer
         /// </summary>
         /// <param name="output">The buffer to write to</param>
-        public static void WriteRecordSeparator(IOutput output) => output.Write(RecordSeparatorArray);
+        public static void WriteRecordSeparator(IBufferWriter<byte> output) => output.Write(RecordSeparatorArray);
     }
 }

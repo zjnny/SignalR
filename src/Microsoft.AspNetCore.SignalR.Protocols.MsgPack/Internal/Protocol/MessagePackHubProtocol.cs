@@ -36,14 +36,13 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
             SerializationContext = options.Value.SerializationContext;
         }
 
-        public bool TryParseMessage(ref ReadOnlyBuffer<byte> input, IInvocationBinder binder, out HubMessage message)
+        public bool TryParseMessage(ref ReadOnlySequence<byte> input, IInvocationBinder binder, out HubMessage message)
         {
             if (BinaryMessageFormat.TrySliceMessage(ref input, out var payload))
             {
-                // TODO: Before submitting PR ZOMG TOARRAY
-                using (var ms = new MemoryStream(payload.ToArray()))
+                using (var stream = new ReadOnlySequenceStream(payload))
                 {
-                    message = ParseMessage(ms, binder);
+                    message = ParseMessage(stream, binder);
                 }
                 return true;
             }
@@ -54,7 +53,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
             }
         }
 
-        public void WriteMessage(IOutput output, HubMessage message)
+        public void WriteMessage(IBufferWriter<byte> output, HubMessage message)
         {
             // We're writing data into the memoryStream so that we can get the length prefix
             using (var memoryStream = new MemoryStream())
