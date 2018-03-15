@@ -14,6 +14,10 @@ import { delay, flushEntries, getEntryContent, getLogEntry, isComplete, waitForE
 import * as _debug from "debug";
 const debug = _debug("webdriver-tap-runner:bin");
 
+process.on("uncaughtException", (ex) => {
+    console.log(ex.message);
+    console.log(ex.stack);
+});
 
 export interface RunnerOptions {
     browser: string;

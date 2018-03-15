@@ -64,7 +64,7 @@ describe("hubConnection", () => {
                 });
             });
 
-            it("can invoke server method structural object and receive structural result", (done) => {
+            it("can invoke server method with an object and receive an object in response", (done) => {
                 const hubConnection = new HubConnection(TESTHUBENDPOINT_URL, {
                     logger: LogLevel.Trace,
                     protocol,
@@ -72,8 +72,10 @@ describe("hubConnection", () => {
                 });
 
                 hubConnection.on("CustomObject", (customObject) => {
-                    expect(customObject.Name).toBe("test");
-                    expect(customObject.Value).toBe(42);
+                    expect(customObject).toEqual({
+                        name: "test",
+                        value: 42,
+                    });
                     hubConnection.stop();
                 });
 
@@ -83,7 +85,7 @@ describe("hubConnection", () => {
                 });
 
                 hubConnection.start().then(() => {
-                    hubConnection.send("SendCustomObject", { Name: "test", Value: 42 });
+                    hubConnection.send("SendCustomObject", { name: "test", value: 42 });
                 }).catch((e) => {
                     fail(e);
                     done();
@@ -376,14 +378,14 @@ describe("hubConnection", () => {
                 });
 
                 const complexObject = {
-                    ByteArray: protocol.name === "json"
+                    byteArray: protocol.name === "json"
                         ? "aGVsbG8="
                         : new Uint8Array([0x68, 0x65, 0x6c, 0x6c, 0x6f]),
-                    GUID: protocol.name === "json"
+                    guid: protocol.name === "json"
                         ? "00010203-0405-0607-0706-050403020100"
                         : new Uint8Array([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00]),
-                    IntArray: [0x01, 0x02, 0x03, 0xff],
-                    String: "Hello, World!",
+                    intArray: [0x01, 0x02, 0x03, 0xff],
+                    string: "Hello, World!",
                 };
 
                 hubConnection.start()
@@ -394,10 +396,10 @@ describe("hubConnection", () => {
                         if (protocol.name === "messagepack") {
                             // msgpack creates a Buffer for byte arrays and jasmine fails to compare a Buffer
                             // and a Uint8Array even though Buffer instances are also Uint8Array instances
-                            value.ByteArray = new Uint8Array(value.ByteArray);
+                            value.byteArray = new Uint8Array(value.ByteArray);
 
                             // GUIDs are serialized as Buffer as well.
-                            value.GUID = new Uint8Array(value.GUID);
+                            value.guid = new Uint8Array(value.guid);
                         }
                         expect(value).toEqual(complexObject);
                     })

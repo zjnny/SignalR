@@ -157,6 +157,9 @@ function createOutput() {
         process.exit(failureCount);
     } catch (e) {
         console.error("Error: " + e.toString());
+        if (e.stack) {
+            console.error(e.stack);
+        }
         process.exit(1);
     }
 })();

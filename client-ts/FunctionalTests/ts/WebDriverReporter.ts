@@ -46,15 +46,15 @@ class WebDriverReporter implements jasmine.CustomReporter {
             this.taplog("  ---");
             for (const expectation of result.failedExpectations) {
                 // Include YAML block with failed expectations
-                this.taplog(`    - message: ${expectation.message}`);
+                this.taplog(`    - message: ${yamlVerbatim(expectation.message)}`);
                 if (expectation.matcherName) {
-                    this.taplog(`      operator: ${expectation.matcherName}`);
+                    this.taplog(`      operator: ${yamlVerbatim(expectation.matcherName)}`);
                 }
                 if (expectation.expected) {
-                    this.taplog(`      expected: ${formatValue(expectation.expected)}`);
+                    this.taplog(`      expected: ${yamlVerbatim(formatValue(expectation.expected))}`);
                 }
                 if (expectation.actual) {
-                    this.taplog(`      actual: ${formatValue(expectation.actual)}`);
+                    this.taplog(`      actual: ${yamlVerbatim(formatValue(expectation.actual))}`);
                 }
             }
             this.taplog("  ...");
@@ -79,6 +79,10 @@ class WebDriverReporter implements jasmine.CustomReporter {
             this.element.appendChild(input);
         }
     }
+}
+
+function yamlVerbatim(s: string): string {
+    return `"${s.replace(/"/g, "\\\"").replace(/\r?\n/g, "\\n")}"`;
 }
 
 jasmine.getEnv().addReporter(new WebDriverReporter(window.document, getParameterByName("displayTap") === "true"));

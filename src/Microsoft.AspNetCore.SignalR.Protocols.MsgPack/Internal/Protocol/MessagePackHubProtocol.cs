@@ -216,11 +216,11 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
             }
         }
 
-        private static T ApplyHeaders<T>(IDictionary<string, string> source, T destination) where T: HubInvocationMessage
+        private static T ApplyHeaders<T>(IDictionary<string, string> source, T destination) where T : HubInvocationMessage
         {
-            if(source != null && source.Count > 0)
+            if (source != null && source.Count > 0)
             {
-                foreach(var header in source)
+                foreach (var header in source)
                 {
                     destination.Headers[header.Key] = header.Value;
                 }
@@ -498,10 +498,52 @@ namespace Microsoft.AspNetCore.SignalR.Internal.Protocol
         {
             // serializes objects (here: arguments and results) as maps so that property names are preserved
             var serializationContext = new SerializationContext { SerializationMethod = SerializationMethod.Map };
+            serializationContext.DictionarySerlaizationOptions.KeyTransformer = JsonLikeCamelCaser;
 
             // allows for serializing objects that cannot be deserialized due to the lack of the default ctor etc.
             serializationContext.CompatibilityOptions.AllowAsymmetricSerializer = true;
             return serializationContext;
+        }
+
+        private static string JsonLikeCamelCaser(string s)
+        {
+            if (string.IsNullOrEmpty(s) || !char.IsUpper(s[0]))
+            {
+                return s;
+            }
+
+            char[] chars = s.ToCharArray();
+
+            for (int i = 0; i < chars.Length; i++)
+            {
+                if (i == 1 && !char.IsUpper(chars[i]))
+                {
+                    break;
+                }
+
+                bool hasNext = (i + 1 < chars.Length);
+                if (i > 0 && hasNext && !char.IsUpper(chars[i + 1]))
+                {
+                    // if the next character is a space, which is not considered uppercase 
+                    // (otherwise we wouldn't be here...)
+                    // we want to ensure that the following:
+                    // 'FOO bar' is rewritten as 'foo bar', and not as 'foO bar'
+                    // The code was written in such a way that the first word in uppercase
+                    // ends when if finds an uppercase letter followed by a lowercase letter.
+                    // now a ' ' (space, (char)32) is considered not upper
+                    // but in that case we still want our current character to become lowercase
+                    if (char.IsSeparator(chars[i + 1]))
+                    {
+                        chars[i] = char.ToLowerInvariant(chars[i]);
+                    }
+
+                    break;
+                }
+
+                chars[i] = char.ToLowerInvariant(chars[i]);
+            }
+
+            return new string(chars);
         }
     }
 }

@@ -25,12 +25,7 @@ namespace FunctionalTests
         {
             services.AddSockets();
             services.AddSignalR()
-                .AddJsonProtocol(options =>
-                {
-                    // we are running the same tests with JSON and MsgPack protocols and having
-                    // consistent casing makes it cleaner to verify results
-                    options.PayloadSerializerSettings.ContractResolver = new DefaultContractResolver();
-                })
+                .AddJsonProtocol()
                 .AddMessagePackProtocol();
 
             services.AddAuthorization(options =>
