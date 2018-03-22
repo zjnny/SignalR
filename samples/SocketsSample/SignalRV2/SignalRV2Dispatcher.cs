@@ -12,23 +12,24 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Protocols;
 using Microsoft.AspNetCore.Protocols.Features;
+using Microsoft.AspNetCore.Sockets;
 using Microsoft.AspNetCore.Sockets.Internal;
 using Microsoft.AspNetCore.Sockets.Internal.Transports;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using Newtonsoft.Json;
 
-namespace Microsoft.AspNetCore.Sockets
+namespace SocketsSample
 {
-    public class LegacyHttpConnectionDispatcher : HttpConnectionDispatcher
+    public class SignalRV2Dispatcher : HttpConnectionDispatcher
     {
-        public LegacyHttpConnectionDispatcher(ConnectionManager manager, ILoggerFactory loggerFactory) : base(manager, loggerFactory)
+        public SignalRV2Dispatcher(ConnectionManager manager, ILoggerFactory loggerFactory) : base(manager, loggerFactory)
         {
         }
 
         protected override string GetConnectionId(HttpContext context) => context.Request.Query["connectionToken"];
 
-        protected override void EnsureTransport(DefaultConnectionContext connection, PipeOptions transportPipeOptions, PipeOptions appPipeOptions)
+        protected override void EnsureTransport(Microsoft.AspNetCore.Sockets.DefaultConnectionContext connection, PipeOptions transportPipeOptions, PipeOptions appPipeOptions)
         {
             base.EnsureTransport(connection, new PipeOptions(readerScheduler: PipeScheduler.Inline), new PipeOptions(readerScheduler: PipeScheduler.Inline));
         }
@@ -46,7 +47,7 @@ namespace Microsoft.AspNetCore.Sockets
             }
         }
 
-        protected override async Task<bool> EnsureConnectionStateAsync(DefaultConnectionContext connection, HttpContext context, TransportType transportType, TransportType supportedTransports, ConnectionLogScope logScope, HttpSocketOptions options)
+        protected override async Task<bool> EnsureConnectionStateAsync(Microsoft.AspNetCore.Sockets.DefaultConnectionContext connection, HttpContext context, TransportType transportType, TransportType supportedTransports, ConnectionLogScope logScope, HttpSocketOptions options)
         {
             if (!await base.EnsureConnectionStateAsync(connection, context, transportType, supportedTransports, logScope, options))
             {

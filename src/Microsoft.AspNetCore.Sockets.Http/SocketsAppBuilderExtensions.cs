@@ -13,11 +13,10 @@ namespace Microsoft.AspNetCore.Builder
         public static IApplicationBuilder UseSockets(this IApplicationBuilder app, Action<SocketRouteBuilder> callback)
         {
             var dispatcher = app.ApplicationServices.GetRequiredService<HttpConnectionDispatcher>();
-            var legacyDispatcher = app.ApplicationServices.GetRequiredService<LegacyHttpConnectionDispatcher>();
 
             var routes = new RouteBuilder(app);
 
-            callback(new SocketRouteBuilder(routes, dispatcher, legacyDispatcher));
+            callback(new SocketRouteBuilder(routes, dispatcher));
 
             app.UseWebSockets();
             app.UseRouter(routes.Build());
