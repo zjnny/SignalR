@@ -57,22 +57,27 @@ namespace Microsoft.AspNetCore.SignalR.Internal
 
         public override async Task OnDisconnectedAsync(HubConnectionContext connection, Exception exception)
         {
-            using (var scope = _serviceScopeFactory.CreateScope())
+            try
             {
-                var hubActivator = scope.ServiceProvider.GetRequiredService<IHubActivator<THub>>();
-                var hub = hubActivator.Create();
-                try
+                using (var scope = _serviceScopeFactory.CreateScope())
                 {
-                    InitializeHub(hub, connection);
-                    await hub.OnDisconnectedAsync(exception);
-                }
-                finally
-                {
-                    hubActivator.Release(hub);
+                    var hubActivator = scope.ServiceProvider.GetRequiredService<IHubActivator<THub>>();
+                    var hub = hubActivator.Create();
+                    try
+                    {
+                        InitializeHub(hub, connection);
+                        await hub.OnDisconnectedAsync(exception);
+                    }
+                    finally
+                    {
+                        hubActivator.Release(hub);
+                    }
                 }
             }
-
-            await _lifetimeManager.OnDisconnectedAsync(connection);
+            finally
+            {
+                await _lifetimeManager.OnDisconnectedAsync(connection);
+            }
         }
 
         public override async Task DispatchMessageAsync(HubConnectionContext connection, HubMessage hubMessage)

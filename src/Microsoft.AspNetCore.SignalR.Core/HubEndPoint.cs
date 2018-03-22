@@ -74,7 +74,7 @@ namespace Microsoft.AspNetCore.SignalR
             {
                 Log.ErrorDispatchingHubEvent(_logger, "OnConnectedAsync", ex);
 
-                // await SendCloseAsync(connection, ex);
+                await SendCloseAsync(connection, ex);
 
                 // return instead of throw to let close message send successfully
                 return;
@@ -100,7 +100,7 @@ namespace Microsoft.AspNetCore.SignalR
         private async Task HubOnDisconnectedAsync(HubConnectionContext connection, Exception exception)
         {
             // send close message before aborting the connection
-            // await SendCloseAsync(connection, exception);
+            await SendCloseAsync(connection, exception);
 
             // We wait on abort to complete, this is so that we can guarantee that all callbacks have fired
             // before OnDisconnectedAsync
