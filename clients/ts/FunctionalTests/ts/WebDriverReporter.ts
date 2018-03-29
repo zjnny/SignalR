@@ -35,10 +35,6 @@ class WebDriverReporter implements jasmine.CustomReporter {
         document.body.appendChild(this.element);
     }
 
-    public jasmineStarted(suiteInfo: jasmine.SuiteInfo): void {
-        this.taplog(`1..${suiteInfo.totalSpecsDefined}`);
-    }
-
     public specStarted(result: jasmine.CustomReporterResult): void {
         this.concurrentSpecCount += 1;
         if (this.concurrentSpecCount > 1) {
@@ -90,6 +86,7 @@ class WebDriverReporter implements jasmine.CustomReporter {
     }
 
     public jasmineDone(runDetails: jasmine.RunDetails): void {
+        this.taplog(`1..${this.specCounter}`);
         this.element.setAttribute("data-done", "1");
     }
 

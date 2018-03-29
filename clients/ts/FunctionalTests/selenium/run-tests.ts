@@ -72,6 +72,7 @@ function waitForMatch(command: string, process: ChildProcess, regex: RegExp): Pr
 let configuration = "Debug";
 let chromePath: string;
 let spec: string;
+let baseUrl: string;
 
 for (let i = 2; i < process.argv.length; i += 1) {
     switch (process.argv[i]) {
@@ -91,6 +92,10 @@ for (let i = 2; i < process.argv.length; i += 1) {
             i += 1;
             spec = process.argv[i];
             break;
+        case "--url":
+            i += 1;
+            baseUrl = process.argv[i];
+            break;
     }
 }
 
@@ -100,31 +105,36 @@ if (chromePath) {
 
 (async () => {
     try {
-        const serverPath = path.resolve(__dirname, "..", "bin", configuration, "netcoreapp2.1", "FunctionalTests.dll");
+        if (!baseUrl) {
+            const serverPath = path.resolve(__dirname, "..", "bin", configuration, "netcoreapp2.1", "FunctionalTests.dll");
 
-        debug(`Launching Functional Test Server: ${serverPath}`);
-        const dotnet = spawn("dotnet", [serverPath], {
-            env: {
-                ...process.env,
-                ["ASPNETCORE_URLS"]: "http://127.0.0.1:0"
-            },
-        });
+            debug(`Launching Functional Test Server: ${serverPath}`);
+            const dotnet = spawn("dotnet", [serverPath], {
+                env: {
+                    ...process.env,
+                    ["ASPNETCORE_URLS"]: "http://127.0.0.1:0"
+                },
+            });
 
-        function cleanup() {
-            if (dotnet && !dotnet.killed) {
-                console.log("Terminating dotnet process");
-                dotnet.kill();
+            function cleanup() {
+                if (dotnet && !dotnet.killed) {
+                    console.log("Terminating dotnet process");
+                    dotnet.kill();
+                }
             }
+
+            process.on("SIGINT", cleanup);
+            process.on("exit", cleanup);
+
+            debug("Waiting for Functional Test Server to start");
+            const results = await waitForMatch("dotnet", dotnet, /Now listening on: (http:\/\/[^\/]+:[\d]+)/);
+            debug(`Functional Test Server has started at ${results[1]}`);
+            baseUrl = results[1];
+        } else {
+            console.log(`Using running functional test server: ${baseUrl}`);
         }
 
-        process.on("SIGINT", cleanup);
-        process.on("exit", cleanup);
-
-        debug("Waiting for Functional Test Server to start");
-        const results = await waitForMatch("dotnet", dotnet, /Now listening on: (http:\/\/[^\/]+:[\d]+)/);
-        debug(`Functional Test Server has started at ${results[1]}`);
-
-        let url = results[1] + "?cacheBust=true";
+        let url = baseUrl + "?cacheBust=true";
         if (spec) {
             url += `&spec=${encodeURI(spec)}`;
         }
