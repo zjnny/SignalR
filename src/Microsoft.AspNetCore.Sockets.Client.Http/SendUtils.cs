@@ -32,7 +32,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
                     {
                         // Grab as many messages as we can from the pipe
 
-                        transportCts.Token.ThrowIfCancellationRequested();
+                        //transportCts.Token.ThrowIfCancellationRequested();
                         if (!buffer.IsEmpty)
                         {
                             Log.SendingMessages(logger, buffer.Length, sendUrl);
@@ -43,7 +43,9 @@ namespace Microsoft.AspNetCore.Sockets.Client
                             request.Version = new Version(1, 1);
                             PrepareHttpRequest(request, httpOptions);
 
-                            request.Content = new ReadOnlySequenceContent(buffer);
+                            request.Content = new ByteArrayContent(buffer.ToArray());
+
+                            transportCts.CancelAfter(1000);
 
                             var response = await httpClient.SendAsync(request, transportCts.Token);
                             response.EnsureSuccessStatusCode();

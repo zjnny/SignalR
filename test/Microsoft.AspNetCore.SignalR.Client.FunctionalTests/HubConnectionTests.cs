@@ -370,33 +370,36 @@ namespace Microsoft.AspNetCore.SignalR.Client.FunctionalTests
         [MemberData(nameof(HubProtocolsAndTransportsAndHubPaths))]
         public async Task StreamDoesNotStartIfTokenAlreadyCanceled(string protocolName, TransportType transportType, string path)
         {
-            var protocol = HubProtocols[protocolName];
-            using (StartLog(out var loggerFactory, LogLevel.Trace, $"{nameof(StreamDoesNotStartIfTokenAlreadyCanceled)}_{protocol.Name}_{transportType}_{path.TrimStart('/')}"))
+            while (true)
             {
-                var connection =
-                    new HubConnection(
-                        GetHttpConnectionFactory(loggerFactory, path, transportType), protocol,
-                        loggerFactory);
-                try
+                var protocol = HubProtocols[protocolName];
+                using (StartLog(out var loggerFactory, LogLevel.Trace, $"{nameof(StreamDoesNotStartIfTokenAlreadyCanceled)}_{protocol.Name}_{transportType}_{path.TrimStart('/')}"))
                 {
-                    await connection.StartAsync().OrTimeout();
+                    var connection =
+                        new HubConnection(
+                            GetHttpConnectionFactory(loggerFactory, path, transportType), protocol,
+                            loggerFactory);
+                    try
+                    {
+                        await connection.StartAsync().OrTimeout();
 
-                    var cts = new CancellationTokenSource();
-                    cts.Cancel();
+                        var cts = new CancellationTokenSource();
+                        cts.Cancel();
 
-                    var channel = await connection.StreamAsChannelAsync<int>("Stream", 5, cts.Token).OrTimeout();
+                        var channel = await connection.StreamAsChannelAsync<int>("Stream", 5, cts.Token).OrTimeout();
 
-                    await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-                        channel.WaitToReadAsync().AsTask().OrTimeout());
-                }
-                catch (Exception ex)
-                {
-                    loggerFactory.CreateLogger<HubConnectionTests>().LogError(ex, "{ExceptionType} from test", ex.GetType().FullName);
-                    throw;
-                }
-                finally
-                {
-                    await connection.DisposeAsync().OrTimeout();
+                        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                            channel.WaitToReadAsync().AsTask().OrTimeout());
+                    }
+                    catch (Exception ex)
+                    {
+                        loggerFactory.CreateLogger<HubConnectionTests>().LogError(ex, "{ExceptionType} from test", ex.GetType().FullName);
+                        throw;
+                    }
+                    finally
+                    {
+                        await connection.DisposeAsync().OrTimeout();
+                    }
                 }
             }
         }
@@ -863,22 +866,22 @@ namespace Microsoft.AspNetCore.SignalR.Client.FunctionalTests
         }
 
         // This list excludes "special" hub paths like "default-nowebsockets" which exist for specific tests.
-        public static string[] HubPaths = new[] { "/default", "/dynamic", "/hubT" };
+        public static string[] HubPaths = new[] { "/default"/*, "/dynamic", "/hubT"*/ };
 
         public static Dictionary<string, IHubProtocol> HubProtocols =>
             new Dictionary<string, IHubProtocol>
             {
-                { "json", new JsonHubProtocol() },
+                // { "json", new JsonHubProtocol() },
                 { "messagepack", new MessagePackHubProtocol() },
             };
 
         public static IEnumerable<object[]> TransportTypes()
         {
-            if (TestHelpers.IsWebSocketsSupported())
+            /*if (TestHelpers.IsWebSocketsSupported())
             {
                 yield return new object[] { TransportType.WebSockets };
             }
-            yield return new object[] { TransportType.ServerSentEvents };
+            yield return new object[] { TransportType.ServerSentEvents };*/
             yield return new object[] { TransportType.LongPolling };
         }
     }
