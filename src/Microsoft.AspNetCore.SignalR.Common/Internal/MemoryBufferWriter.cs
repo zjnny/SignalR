@@ -64,7 +64,7 @@ namespace Microsoft.AspNetCore.SignalR.Internal
 
         }
 
-        public Memory<byte> CurrentSegment => Segments.Count > 0 ? Segments[Segments.Count - 1] : null;
+        public Memory<byte> CurrentSegment => Segments[Segments.Count - 1];
 
         public void Advance(int count)
         {
@@ -82,7 +82,9 @@ namespace Microsoft.AspNetCore.SignalR.Internal
                 Position = 0;
             }
 
-            return CurrentSegment.Slice(Position, CurrentSegment.Length - Position);
+            // Cache property access (compiler doesn't for some reason?)
+            var currentSegment = CurrentSegment;
+            return currentSegment.Slice(Position, currentSegment.Length - Position);
         }
 
         public Span<byte> GetSpan(int sizeHint = 0)
